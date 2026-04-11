@@ -2,40 +2,61 @@
 
 MAVLink telemetry HUD for Raspberry Pi Zero 2 W. Reads telemetry from an RFD900 radio (via FTDI/serial) or from an ArduPilot SITL instance over the network, and renders a Yaapu-style heads-up display with an artificial horizon to an HDMI screen using pygame.
 
+**Repository:** [github.com/Cookie125/pi-telem](https://github.com/Cookie125/pi-telem) (default branch: `main`)
+
 ## Features
 
 - Artificial horizon with pitch ladder and roll indicator
-- Scrolling IAS (indicated airspeed) tape
-- Dual scrolling altitude tapes — relative (AGL) and MSL, switchable between metres and feet
+- Optional **synthetic vision (SVS) terrain** on the horizon (`--terrain`) — layered terrain bands styled like MAVProxy’s `horizon_svs`, using SRTM/Copernicus elevation data
+- Scrolling **IAS** (indicated airspeed) tape
+- Dual scrolling altitude tapes — relative (AGL) and MSL, switchable between **metres and feet** (`--alt-unit`)
 - Compass heading ribbon with home bearing marker
 - G1000-style wind direction arrow and speed readout
 - Flight mode and arm status
 - GPS fix type and satellite count
 - Battery voltage, current, and remaining %
 - Home distance and bearing
-- Vertical speed readout
+- Vertical speed readout (with units)
 - STATUSTEXT message log
-- Auto-start on boot via systemd
+- Auto-start on boot via systemd (`install.sh`)
 
 ## Quick Start
 
 ```bash
 git clone https://github.com/Cookie125/pi-telem.git && cd pi-telem
+git checkout main
 ./install.sh
 
-# Run against a SITL instance
+# Run against a SITL instance (desktop / dev machine)
 .venv/bin/python main.py --connection udpin:0.0.0.0:14550 --windowed
 
-# Run against RFD900 hardware
+# Run against RFD900 hardware on the Pi
 .venv/bin/python main.py --connection /dev/ttyUSB0 --baud 115200
+
+# Optional: synthetic vision terrain (needs network once to download DEM tiles)
+.venv/bin/python main.py --connection /dev/ttyUSB0 --terrain --terrain-db SRTM1
 ```
+
+## Updating an existing clone (e.g. on a Raspberry Pi)
+
+If your local branch diverged from GitHub (for example after a history rewrite on `main`), reset to match the remote, then refresh dependencies:
+
+```bash
+cd ~/pi-telem
+git fetch origin
+git checkout main
+git reset --hard origin/main
+./.venv/bin/pip install -r requirements.txt --upgrade
+```
+
+Restart the service if you use it: `sudo systemctl restart pitelem`
 
 ## Connection Strings
 
 The `--connection` flag accepts any `pymavlink` connection string:
 
 | String | Use |
-|---|---|
+|--------|-----|
 | `/dev/ttyUSB0` | Serial (RFD900 via FTDI) |
 | `udpin:0.0.0.0:14550` | UDP listen (SITL default output) |
 | `udpout:192.168.1.100:14550` | UDP connect to remote |
@@ -43,14 +64,36 @@ The `--connection` flag accepts any `pymavlink` connection string:
 
 ## CLI Options
 
+| Option | Description |
+|--------|-------------|
+| `-c`, `--connection` | MAVLink connection string (default: `/dev/ttyUSB0`) |
+| `-b`, `--baud` | Serial baud rate, ignored for UDP/TCP (default: `115200`) |
+| `-r`, `--resolution` | Display size `WxH` (default: `800x480`) |
+| `--fps` | Target render frame rate (default: `10`) |
+| `--alt-unit` | Altitude tapes: `m` or `ft` (default: `m`) |
+| `--windowed` | Windowed mode instead of fullscreen (useful on a dev PC) |
+| `--terrain` | Enable SVS terrain on the artificial horizon |
+| `--terrain-db` | Elevation source: `SRTM1`, `SRTM3`, or `COP30` (default: `SRTM1`) |
+
+Equivalent short help:
+
 ```
--c, --connection   MAVLink connection string (default: /dev/ttyUSB0)
--b, --baud         Serial baud rate (default: 115200)
--r, --resolution   Display resolution WxH (default: 800x480)
-    --fps          Target frame rate (default: 10)
-    --alt-unit     Altitude display unit: m or ft (default: m)
-    --windowed     Run in a window instead of fullscreen
+-c, --connection   MAVLink connection string
+-b, --baud           Serial baud rate (default: 115200)
+-r, --resolution     WxH (default: 800x480)
+    --fps             Target frame rate (default: 10)
+    --alt-unit        m or ft (default: m)
+    --windowed        Run in a window instead of fullscreen
+    --terrain         SVS terrain on the horizon
+    --terrain-db      SRTM1, SRTM3, or COP30 (default: SRTM1)
 ```
+
+## Synthetic vision terrain (`--terrain`)
+
+- Elevation comes from **ArduPilot terrain mirrors** (same family as MAVProxy): default **`SRTM1`** (~30 m posts), or `SRTM3` / **Copernicus GLO-30** (`COP30`).
+- Tiles download on first use and cache under **`~/.cache/MAVProxy/terrain/`** — allow internet once, or pre-cache tiles for your flying area.
+- Implementation uses vendored helpers in **`lib/`** (`mp_elevation`, `srtm`, etc.) and a background sampler thread; terrain is drawn as **stacked polygons** similar to MAVProxy `horizon_svs`.
+- Requires **NumPy** (listed in `requirements.txt`).
 
 ## Testing with SITL
 
@@ -60,8 +103,12 @@ Spin up an ArduPilot SITL instance and point it at the HUD:
 # Terminal 1 — start SITL (ArduCopter example)
 sim_vehicle.py -v ArduCopter --out=udp:127.0.0.1:14550
 
-# Terminal 2 — start the HUD
-python main.py --connection udpin:127.0.0.1:14550 --windowed
+# Terminal 2 — start the HUD (from the project venv)
+cd ~/pi-telem
+.venv/bin/python main.py --connection udpin:127.0.0.1:14550 --windowed --alt-unit ft
+
+# With terrain (downloads DEM for current SITL location)
+.venv/bin/python main.py --connection udpin:127.0.0.1:14550 --windowed --terrain
 ```
 
 SITL on another machine:
@@ -71,32 +118,46 @@ SITL on another machine:
 sim_vehicle.py -v ArduCopter --out=udp:<PI_IP>:14550
 
 # On the Pi
-python main.py --connection udpin:0.0.0.0:14550
+.venv/bin/python main.py --connection udpin:0.0.0.0:14550
 ```
 
-If pymavlink is installed in a virtualenv (e.g. the ArduPilot dev env):
+If you use another virtualenv for ArduPilot tools only:
 
 ```bash
 ~/venv-ardupilot/bin/python main.py --connection udpin:127.0.0.1:14550 --windowed
 ```
+
+Install project dependencies in that env first (`pip install -r requirements.txt`), or always use **`.venv/bin/python`** from this repo.
 
 ## Running as a Service
 
 After `install.sh`, the systemd service is installed but not started:
 
 ```bash
-sudo systemctl start pitelem      # start now
-sudo systemctl status pitelem     # check status
-journalctl -u pitelem -f          # tail logs
+sudo systemctl start pitelem       # start now
+sudo systemctl status pitelem      # check status
+journalctl -u pitelem -f           # tail logs
 ```
 
-Edit the connection string in the service:
+Edit the connection string or add `--terrain`:
 
 ```bash
 sudo systemctl edit pitelem
-# Add under [Service]:
-# ExecStart=
-# ExecStart=/path/to/.venv/bin/python /path/to/main.py --connection udpin:0.0.0.0:14550
+```
+
+Example override:
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/home/pi/pi-telem/.venv/bin/python /home/pi/pi-telem/main.py --connection /dev/ttyUSB0 --baud 115200 --terrain
+```
+
+Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart pitelem
 ```
 
 ## Hardware Setup
@@ -108,8 +169,8 @@ sudo systemctl edit pitelem
 ## Dependencies
 
 - Python 3
-- pygame (SDL2)
-- pymavlink
-- System: `libsdl2-dev`, `libsdl2-image-dev`, `libsdl2-ttf-dev`, `fonts-dejavu-core`
+- **pygame** (SDL2), **pymavlink**, **numpy** (terrain)
+- Vendored terrain code under **`lib/`** (SRTM/Copernicus tile access)
+- System packages (via `install.sh`): `libsdl2-dev`, `libsdl2-image-dev`, `libsdl2-ttf-dev`, `fonts-dejavu-core`, etc.
 
-All installed automatically by `install.sh`.
+`install.sh` creates **`.venv`** and runs `pip install -r requirements.txt`.
