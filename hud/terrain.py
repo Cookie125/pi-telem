@@ -36,6 +36,22 @@ HDG_CHANGE_THRESH = 2.0  # degrees heading change before re-querying DEM
 # Earth radius for rhumb-line math
 EARTH_R = 6_378_100.0
 
+# Rate-limited stderr logging for terrain thread failures (otherwise silent on Pi)
+_TERRAIN_ERR_LAST = 0.0
+_TERRAIN_ERR_INTERVAL = 30.0
+
+
+def _is_zero_lat_lon(lat: float, lon: float) -> bool:
+    return abs(lat) < 1e-6 and abs(lon) < 1e-6
+
+
+def _terrain_log_err(msg: str) -> None:
+    global _TERRAIN_ERR_LAST
+    now = time.monotonic()
+    if now - _TERRAIN_ERR_LAST >= _TERRAIN_ERR_INTERVAL:
+        _TERRAIN_ERR_LAST = now
+        sys.stderr.write(f"[pi-telem terrain] {msg}\n")
+
 # ------------------------------------------------------------------
 # Elevation color ramp (from mavproxy horizon_svs)
 # Each entry: (elevation_angle_deg, (r, g, b))  where RGB are 0.0–1.0
@@ -192,24 +208,40 @@ class TerrainSampler(threading.Thread):
         self._elev_model = ElevationModel(self._db)
 
     def run(self):
-        self._init_elevation_model()
+        try:
+            self._init_elevation_model()
+        except Exception as e:
+            _terrain_log_err(
+                f"ElevationModel init failed ({self._db}): {e!r}. "
+                "Fix: pip install numpy; ensure lib/ exists; network for first tile download."
+            )
+            return
         interval = 1.0 / SAMPLE_HZ
         while True:
             t0 = time.monotonic()
             try:
                 self._sample()
-            except Exception:
-                pass
+            except Exception as e:
+                _terrain_log_err(f"sampling error: {e!r}")
             elapsed = time.monotonic() - t0
             time.sleep(max(0.0, interval - elapsed))
 
     # ------------------------------------------------------------------
     def _sample(self):
         s = self._state.snapshot()
-        if not s.connected or s.lat == 0.0 and s.lon == 0.0:
+        if not s.connected:
             return
 
-        lat, lon, alt_msl = s.lat, s.lon, s.altitude_msl
+        # GPS often reports 0,0 before fix; HOME_POSITION may already be valid — use it for DEM.
+        lat, lon = s.lat, s.lon
+        if _is_zero_lat_lon(lat, lon) and s.home_set and not _is_zero_lat_lon(
+                s.home_lat, s.home_lon):
+            lat, lon = s.home_lat, s.home_lon
+
+        if _is_zero_lat_lon(lat, lon):
+            return
+
+        alt_msl = s.altitude_msl
         # heading is stored in degrees 0-360 in telemetry_state
         hdg_deg = s.heading % 360.0
 

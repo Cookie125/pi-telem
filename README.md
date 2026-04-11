@@ -160,6 +160,17 @@ sudo systemctl daemon-reload
 sudo systemctl restart pitelem
 ```
 
+The stock **`install.sh`** service runs **`main.py` without `--terrain`**. To use SVS from systemd you **must** add **`--terrain`** (and optional **`--terrain-db`**) in **`systemctl edit`**, as above. Running **`python main.py --terrain`** manually while the service omits the flag explains “works on PC, not on Pi.”
+
+### If terrain works locally but not on the Pi
+
+| Symptom | What to check |
+|--------|----------------|
+| No SVS, flat brown ground only | **`--terrain` not in the command** (service or script). |
+| Still nothing after adding `--terrain` | **GPS lat/lon** are often `0,0` until lock. The HUD falls back to **home** if **`HOME_POSITION`** is set; otherwise terrain waits for a valid position. |
+| DEM never loads | **Network** once so tiles can download to **`~/.cache/MAVProxy/terrain/`**; then offline use is fine. |
+| Silent failure | Check **`journalctl -u pitelem -e`** — the terrain thread logs errors to stderr at most every 30s, e.g. missing **`numpy`**, missing **`lib/`**, or elevation init failure. Run **`./.venv/bin/pip install -r requirements.txt`** from the repo root. |
+
 ## Hardware Setup
 
 - **Pi Zero 2 W** running Raspberry Pi OS Lite (no desktop needed)
