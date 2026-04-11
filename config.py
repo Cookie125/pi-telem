@@ -46,6 +46,17 @@ connection string examples:
         default="m",
         help="Altitude display unit (default: m)",
     )
+    p.add_argument(
+        "--terrain",
+        action="store_true",
+        help="Enable SVS terrain rendering on the artificial horizon",
+    )
+    p.add_argument(
+        "--terrain-db",
+        choices=["SRTM1", "SRTM3", "COP30"],
+        default="SRTM1",
+        help="Terrain elevation source (default: SRTM1)",
+    )
 
     args = p.parse_args()
 

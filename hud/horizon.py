@@ -9,16 +9,30 @@ from hud.fonts import get_font
 PPD = 4.0
 
 
-def draw(surface: pygame.Surface, rect: pygame.Rect, roll: float, pitch: float):
+def work_surface_diag(w: int, h: int) -> int:
+    """Side length of the square work surface drawn before roll rotation.
+
+    Terrain must be rendered at (diag, diag) with the same value so it fills this
+    entire square; otherwise centered (w,h) terrain leaves side margins that show
+    only the base fill and look empty at the HUD edges when rolled.
+    """
+    return int(math.hypot(w, h)) + 60
+
+
+def draw(surface: pygame.Surface, rect: pygame.Rect, roll: float, pitch: float,
+         terrain_surface: pygame.Surface = None):
     """Draw artificial horizon with pitch ladder and roll indicator.
 
     roll / pitch are in radians (from ATTITUDE message).
+    terrain_surface: optional pre-rendered SVS surface.  Should be
+                     (work_surface_diag(w,h), work_surface_diag(w,h)) so it covers
+                     the full prerotation square; horizon aligns it with pitch.
     """
     cx, cy = rect.centerx, rect.centery
     w, h = rect.width, rect.height
 
     # Work surface (oversized so rotation doesn't clip)
-    diag = int(math.hypot(w, h)) + 60
+    diag = work_surface_diag(w, h)
     work = pygame.Surface((diag, diag))
     wcx, wcy = diag // 2, diag // 2
 
@@ -28,7 +42,25 @@ def draw(surface: pygame.Surface, rect: pygame.Rect, roll: float, pitch: float):
     # Sky and ground split at pitch offset
     split_y = int(wcy + pitch_px)
     work.fill(colors.SKY)
-    pygame.draw.rect(work, colors.GROUND, (0, split_y, diag, diag - split_y))
+
+    if terrain_surface is not None:
+        # Below-horizon base before blitting SRCALPHA terrain.  Use the same brown
+        # as flat ground — not deep green.  Terrain polygons are ~78–96% opaque, so
+        # a green underpaint bleeds through at the sides and bottom and reads as
+        # solid artificial green; mavproxy uses a tan/brown fallback instead.
+        pygame.draw.rect(work, colors.GROUND, (0, split_y, diag, diag - split_y))
+        # Full-size (diag x diag) terrain covers the entire work square edge-to-edge.
+        # Older (w x h) centered blit left side margins with no SVS under roll.
+        ts_w, ts_h = terrain_surface.get_size()
+        if ts_w == diag and ts_h == diag:
+            work.blit(terrain_surface, (0, int(pitch_px)))
+        else:
+            ts_rect = terrain_surface.get_rect()
+            ts_x = wcx - ts_rect.width // 2
+            ts_y = wcy - ts_rect.height // 2 + int(pitch_px)
+            work.blit(terrain_surface, (ts_x, ts_y))
+    else:
+        pygame.draw.rect(work, colors.GROUND, (0, split_y, diag, diag - split_y))
 
     # Horizon line
     pygame.draw.line(work, colors.WHITE, (0, split_y), (diag, split_y), 2)

@@ -33,7 +33,14 @@ def main():
     reader = MavlinkReader(args.connection, args.baud, state)
     reader.start()
 
-    renderer = HUDRenderer(screen, state, alt_unit=args.alt_unit)
+    terrain_sampler = None
+    if args.terrain:
+        from hud.terrain import TerrainSampler
+        terrain_sampler = TerrainSampler(state, db=args.terrain_db)
+        terrain_sampler.start()
+
+    renderer = HUDRenderer(screen, state, alt_unit=args.alt_unit,
+                           terrain_sampler=terrain_sampler)
     clock = pygame.time.Clock()
 
     running = True

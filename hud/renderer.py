@@ -25,10 +25,17 @@ M_TO_FT = 3.28084
 
 
 class HUDRenderer:
-    def __init__(self, screen: pygame.Surface, state, alt_unit: str = "m"):
+    def __init__(self, screen: pygame.Surface, state, alt_unit: str = "m",
+                 terrain_sampler=None):
         self.screen = screen
         self.state = state
         self.alt_unit = alt_unit
+        self._terrain_sampler = terrain_sampler
+        self._terrain_renderer = None
+        if terrain_sampler is not None:
+            from hud.terrain import TerrainRenderer
+            self._terrain_renderer = TerrainRenderer()
+        self._last_terrain_seq = -1
         self._build_layout()
 
     def _build_layout(self):
@@ -62,16 +69,18 @@ class HUDRenderer:
         self.speed_rect = pygame.Rect(0, main_top, spd_w, main_h)
         self.alt_rel_rect = pygame.Rect(sw - right_tapes_w, main_top, alt_w, main_h)
         self.alt_msl_rect = pygame.Rect(sw - alt_w, main_top, alt_w, main_h)
-        self.horizon_rect = pygame.Rect(spd_w, main_top,
-                                        sw - spd_w - right_tapes_w, main_h)
+
+        # Horizon spans the full width so terrain renders edge-to-edge;
+        # tapes draw on top with semi-transparent backgrounds.
+        self.horizon_rect = pygame.Rect(0, main_top, sw, main_h)
 
         # Home info bar spanning full width at compass row
         self.home_info_rect = pygame.Rect(0, info_y, sw, COMPASS_BAR_H)
 
-        # Wind indicator overlaid at bottom-left of horizon area
+        # Wind indicator overlaid at bottom-left of horizon, right of speed tape
         wind_size = 80
         self.wind_rect = pygame.Rect(
-            self.horizon_rect.x + 6,
+            spd_w + 6,
             self.horizon_rect.bottom - wind_size - 6,
             wind_size, wind_size)
 
@@ -79,8 +88,24 @@ class HUDRenderer:
         s = self.state.snapshot()
         self.screen.fill(colors.HUD_BG)
 
+        # Update terrain surface if sampler is active
+        terrain_surf = None
+        if self._terrain_sampler is not None and self._terrain_renderer is not None:
+            seq, profile = self._terrain_sampler.get_profile()
+            # Same square size as horizon's prerotation work surface so SVS fills
+            # edge-to-edge before roll (no empty side margins).
+            w, h = self.horizon_rect.width, self.horizon_rect.height
+            diag = horizon.work_surface_diag(w, h)
+            self._terrain_renderer.update(
+                seq, profile,
+                (diag, diag),
+                s.pitch, s.roll,
+            )
+            terrain_surf = self._terrain_renderer.get_surface()
+
         # Horizon first (background for center area)
-        horizon.draw(self.screen, self.horizon_rect, s.roll, s.pitch)
+        horizon.draw(self.screen, self.horizon_rect, s.roll, s.pitch,
+                     terrain_surface=terrain_surf)
 
         # Tapes overlay on sides
         speed_tape.draw(self.screen, self.speed_rect, s.airspeed, s.groundspeed)
