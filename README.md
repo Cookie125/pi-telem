@@ -162,6 +162,10 @@ Install project dependencies in that env first (`pip install -r requirements.txt
 
 ## Running as a Service
 
+The installer targets **Raspberry Pi OS with desktop** (full Pi OS): the unit sets **`DISPLAY=:0`** and **`XAUTHORITY`** so pygame draws on the **X11 session** after you log in (or autologin). It does **not** force `kmsdrm` (that path is for **Pi OS Lite** / headless HDMI).
+
+**Pi OS Lite (no desktop):** use `sudo systemctl edit pitelem` and **clear** `ExecStart`, then set an `ExecStart` **without** `DISPLAY` / `XAUTHORITY`, and add `Environment=SDL_VIDEODRIVER=kmsdrm` so `main.py` uses the KMS/DRM framebuffer (see `main.py`).
+
 After `install.sh`, the systemd service is installed but not started:
 
 ```bash
@@ -212,7 +216,7 @@ The stock **`install.sh`** service includes **`--map --terrain`** on **`ExecStar
 
 ## Hardware Setup
 
-- **Pi Zero 2 W** running Raspberry Pi OS Lite (no desktop needed)
+- **Pi Zero 2 W** (or similar) running **Raspberry Pi OS** with desktop recommended for `install.sh` defaults; **Pi OS Lite** works with a systemd override (see **Running as a Service**)
 - **RFD900** radio modem connected via **FTDI USB-to-serial** adapter
 - Any **HDMI display** (mini-HDMI adapter required for the Pi Zero 2 W)
 
