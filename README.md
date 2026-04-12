@@ -25,13 +25,13 @@ MAVLink telemetry HUD for Raspberry Pi Zero 2 W. Reads telemetry from an RFD900 
 ```bash
 git clone https://github.com/Cookie125/pi-telem.git && cd pi-telem
 git checkout main
-./install.sh
+./install.sh   # run as the Pi desktop user (not `sudo ./install.sh`), so systemd User= and XAUTHORITY match
 
 # Run against a SITL instance (desktop / dev machine). Use --tx so the HUD can
 # request streams/mission; add --no-terrain / --no-map to lighten dev runs.
 .venv/bin/python main.py -c udpin:127.0.0.1:14550 --windowed --tx
 
-# Pi / headless: no -c uses UDP :14550 then USB serial (see "Connection strings").
+# On the Pi: no -c uses UDP :14550 then USB serial (see "Connection strings").
 # Map and terrain are on by default; MAVLink is receive-only unless you add --tx.
 .venv/bin/python main.py --baud 115200
 
@@ -149,24 +149,48 @@ SITL on another machine:
 sim_vehicle.py -v ArduCopter --out=udp:<PI_IP>:14550
 
 # On the Pi
-.venv/bin/python main.py --connection udpin:0.0.0.0:14550
+.venv/bin/python main.py -c udpin:0.0.0.0:14550
 ```
 
 If you use another virtualenv for ArduPilot tools only:
 
 ```bash
-~/venv-ardupilot/bin/python main.py --connection udpin:127.0.0.1:14550 --windowed
+~/venv-ardupilot/bin/python main.py -c udpin:127.0.0.1:14550 --windowed --tx
 ```
 
 Install project dependencies in that env first (`pip install -r requirements.txt`), or always use **`.venv/bin/python`** from this repo.
 
 ## Running as a Service
 
-The installer targets **Raspberry Pi OS with desktop** (full Pi OS): the unit sets **`DISPLAY=:0`** and **`XAUTHORITY`** so pygame draws on the **X11 session** after you log in (or autologin). It does **not** force `kmsdrm` (that path is for **Pi OS Lite** / headless HDMI).
+### What `install.sh` does
 
-**Pi OS Lite (no desktop):** use `sudo systemctl edit pitelem` and **clear** `ExecStart`, then set an `ExecStart` **without** `DISPLAY` / `XAUTHORITY`, and add `Environment=SDL_VIDEODRIVER=kmsdrm` so `main.py` uses the KMS/DRM framebuffer (see `main.py`).
+1. Installs system packages (Python, SDL2 dev libs, fonts).  
+2. Adds your user to the **`dialout`** group (serial ports). Log out and back in (or reboot) for that to apply.  
+3. Creates **`.venv`** and installs **`requirements.txt`**.  
+4. Writes **`/etc/systemd/system/pitelem.service`** and runs **`systemctl enable pitelem`** (it does **not** start the service). After updating the unit file, run **`sudo systemctl daemon-reload && sudo systemctl enable pitelem`** (or re-run **`./install.sh`**) so systemd picks up changes.
 
-After `install.sh`, the systemd service is installed but not started:
+### Raspberry Pi OS with desktop
+
+The generated unit targets **Raspberry Pi OS with desktop** and a graphical login (including autologin):
+
+| Unit setting | Purpose |
+|----------------|--------|
+| **`WantedBy=multi-user.target`** | Hook into the normal boot target so the unit actually starts on every boot (unlike relying only on **`graphical.target`**, which may not pull in services if the default target differs). |
+| **`After=display-manager.service`** | Start **after the display manager** so an X server is available. |
+| **`Wants=display-manager.service`** | Pull in the display manager if needed. |
+| **`User=`** *your login user* | Runs the HUD as the same user that owns the X session (see below). |
+| **`Environment=DISPLAY=:0`** | Draw on the usual X11 display (adjust if your `DISPLAY` is not `:0`). |
+| **`Environment=XAUTHORITY=/home/<user>/.Xauthority`** | Lets SDL/pygame authenticate to the X server (path matches the user passed to **`User=`**). |
+| **`WorkingDirectory=`** *repo path* | Ensures imports and relative paths behave. |
+| **`ExecStart=.../main.py --baud 115200 --map --terrain`** | Default flags; **no `-c`** so the [connection list](#connection-strings) default applies. |
+| **`Restart=always`** / **`RestartSec=5`** | Retry if X11 was not ready yet (e.g. **`.Xauthority`** missing before autologin finishes). |
+| **`StartLimitIntervalSec=0`** | Avoid systemd giving up after repeated start failures during boot. |
+
+**Do not** set **`SDL_VIDEODRIVER=kmsdrm`** in the unit: the desktop session owns the display.
+
+Run **`./install.sh` as your normal desktop user** (e.g. `pi`), **not** `sudo ./install.sh` from root, so **`User=`** and **`XAUTHORITY=/home/<user>/.Xauthority`** match the account that logs into the desktop.
+
+After install:
 
 ```bash
 sudo systemctl start pitelem       # start now
@@ -174,13 +198,15 @@ sudo systemctl status pitelem      # check status
 journalctl -u pitelem -f           # tail logs
 ```
 
-The stock unit runs **`main.py --baud 115200 --map --terrain`** with **no `-c`**, so it uses the **default connection list** (UDP `:14550`, then USB/UART devices) and keeps **retrying** inside the process. MAVLink defaults to **receive-only**; add **`--tx`** in an override for uplink. Omit **`--map` / `--terrain`** if you want them off, or add **`-c`** for a **fixed** link only:
+**MAVLink** is **receive-only** unless you add **`--tx`** to **`ExecStart`**. The process **keeps trying** the default [connection list](#connection-strings) if nothing is plugged in yet.
+
+### Changing flags or connections
 
 ```bash
 sudo systemctl edit pitelem
 ```
 
-Example override (**full uplink** for mission download / home requests — still default map + terrain):
+**Full uplink** (mission download, stream requests — still default map + terrain):
 
 ```ini
 [Service]
@@ -188,7 +214,7 @@ ExecStart=
 ExecStart=/home/pi/pi-telem/.venv/bin/python /home/pi/pi-telem/main.py --baud 115200 --map --terrain --tx
 ```
 
-Example: **only** serial (no UDP attempt), keep default map / terrain (receive-only):
+**Only** a fixed serial device (no UDP in the rotation):
 
 ```ini
 [Service]
@@ -203,7 +229,18 @@ sudo systemctl daemon-reload
 sudo systemctl restart pitelem
 ```
 
-The stock **`install.sh`** service includes **`--map --terrain`** on **`ExecStart`** (MAVLink **receive-only** by default). Add **`--tx`** in **`systemctl edit`** if you need uplink on the Pi.
+### If the service does not start on boot
+
+- **`systemctl is-enabled pitelem`** should print **`enabled`**. If not: **`sudo systemctl enable pitelem`**.  
+- **`systemctl status pitelem`** — look for **failed** / **inactive** and the last log lines.  
+- Re-run **`./install.sh`** after pulling a newer unit, then **`sudo systemctl daemon-reload && sudo systemctl enable pitelem && sudo systemctl restart pitelem`**.  
+- **`journalctl -b -u pitelem`** — errors opening the display, missing **`.Xauthority`**, or Python tracebacks.
+
+### If the window does not appear (desktop)
+
+- Confirm **`echo $DISPLAY`** on the Pi desktop (often **`:0`**); change the unit if yours differs.  
+- Enable **autologin** or log in once after boot so **`~/.Xauthority`** exists; **`Restart=always`** retries until the HUD can connect to X11.  
+- **`journalctl -u pitelem -e`** for Python/SDL errors (permissions, missing display).
 
 ### If terrain works locally but not on the Pi
 
@@ -216,7 +253,7 @@ The stock **`install.sh`** service includes **`--map --terrain`** on **`ExecStar
 
 ## Hardware Setup
 
-- **Pi Zero 2 W** (or similar) running **Raspberry Pi OS** with desktop recommended for `install.sh` defaults; **Pi OS Lite** works with a systemd override (see **Running as a Service**)
+- **Pi Zero 2 W** (or similar) running **Raspberry Pi OS with desktop** (what **`install.sh`** targets)
 - **RFD900** radio modem connected via **FTDI USB-to-serial** adapter
 - Any **HDMI display** (mini-HDMI adapter required for the Pi Zero 2 W)
 

@@ -31,7 +31,8 @@ echo "[4/5] Installing systemd service..."
 sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<EOF
 [Unit]
 Description=MAVLink Telemetry HUD
-After=graphical.target
+After=display-manager.service
+Wants=display-manager.service
 
 [Service]
 Type=simple
@@ -40,11 +41,12 @@ WorkingDirectory=$SCRIPT_DIR
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/${USER}/.Xauthority
 ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py --baud 115200 --map --terrain
-Restart=on-failure
+Restart=always
 RestartSec=5
+StartLimitIntervalSec=0
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
@@ -55,8 +57,6 @@ echo ""
 echo "The service is installed but NOT started."
 echo ""
 echo "  Configured for Raspberry Pi OS (desktop): DISPLAY=:0 + XAUTHORITY so pygame uses X11."
-echo "  Pi OS Lite (no desktop): sudo systemctl edit ${SERVICE_NAME} — remove DISPLAY/XAUTHORITY"
-echo "    and add: Environment=SDL_VIDEODRIVER=kmsdrm"
 echo ""
 echo "  Default MAVLink: UDP listen 0.0.0.0:14550, then /dev/ttyUSB0, ttyACM0, serial0."
 echo "  Override connections if needed:"
