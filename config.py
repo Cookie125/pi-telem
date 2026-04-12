@@ -1,5 +1,13 @@
 import argparse
 
+# Tried in order when --connection is omitted (Pi: UDP + common USB / UART devices).
+DEFAULT_CONNECTIONS = (
+    "udpin:0.0.0.0:14550",
+    "/dev/ttyUSB0",
+    "/dev/ttyACM0",
+    "/dev/serial0",
+)
+
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -15,14 +23,30 @@ connection string examples:
     )
     p.add_argument(
         "-c", "--connection",
-        default="/dev/ttyUSB0",
-        help="MAVLink connection string (default: /dev/ttyUSB0)",
+        action="append",
+        dest="connections",
+        metavar="CONN",
+        default=None,
+        help=(
+            "MAVLink connection string; repeat for round-robin until one connects. "
+            "If omitted: UDP listen 0.0.0.0:14550, then "
+            "/dev/ttyUSB0, /dev/ttyACM0, /dev/serial0"
+        ),
     )
     p.add_argument(
         "-b", "--baud",
         type=int,
         default=115200,
         help="Serial baud rate, ignored for network connections (default: 115200)",
+    )
+    p.add_argument(
+        "--rx-only",
+        action="store_true",
+        help=(
+            "Receive-only: do not transmit MAVLink (no data-stream requests, "
+            "HOME_POSITION pull, or mission download). For listen-only serial "
+            "(e.g. Pi RX tied to radio TX without a return wire)."
+        ),
     )
     p.add_argument(
         "-r", "--resolution",
@@ -85,6 +109,11 @@ connection string examples:
     )
 
     args = p.parse_args()
+
+    if not args.connections:
+        args.connections = list(DEFAULT_CONNECTIONS)
+    else:
+        args.connections = list(args.connections)
 
     w, h = args.resolution.split("x")
     args.resolution = (int(w), int(h))
