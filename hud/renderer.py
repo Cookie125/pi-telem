@@ -54,13 +54,14 @@ class HUDRenderer:
         vs_w = int(sw * 0.15)
         self.battery_rect = pygame.Rect(0, bot_y, 100, BOTTOM_BAR_H)
         self.messages_rect = pygame.Rect(100, bot_y, sw - 100 - vs_w, BOTTOM_BAR_H)
-        self.vspeed_rect = pygame.Rect(sw - vs_w, bot_y, vs_w, BOTTOM_BAR_H)
+        # Bottom-right: RPM (swapped with VS)
+        self.rpm_rect = pygame.Rect(sw - vs_w, bot_y, vs_w, BOTTOM_BAR_H)
 
-        # Compass row: HOME strip | compass | RPM (same x-span as alt tapes, same row as compass)
+        # Compass row: HOME strip | compass | VS (same x-span as alt tapes)
         info_y = bot_y - COMPASS_BAR_H
         compass_w = sw - spd_w - right_tapes_w
         self.compass_rect = pygame.Rect(spd_w, info_y, compass_w, COMPASS_BAR_H)
-        self.rpm_rect = pygame.Rect(
+        self.vspeed_rect = pygame.Rect(
             sw - right_tapes_w, info_y, right_tapes_w, COMPASS_BAR_H
         )
 
@@ -156,7 +157,7 @@ class HUDRenderer:
             home_brg = _bearing(s.lat, s.lon, s.home_lat, s.home_lon)
         compass.draw(self.screen, self.compass_rect, s.heading,
                      home_bearing=home_brg)
-        efi_rpm.draw(self.screen, self.rpm_rect, s.efi_rpm)
+        self._draw_vspeed(s.vspeed)
 
         # Home text in the left strip; separators after so lines sit on top
         home_info.draw(self.screen, self.home_info_rect, s)
@@ -189,29 +190,32 @@ class HUDRenderer:
         bat_w = min(bat_w, max(sw - vs_w - min_msg, 1))
         self.battery_rect = pygame.Rect(0, bot_y, bat_w, BOTTOM_BAR_H)
         self.messages_rect = pygame.Rect(bat_w, bot_y, sw - bat_w - vs_w, BOTTOM_BAR_H)
-        self.vspeed_rect = pygame.Rect(sw - vs_w, bot_y, vs_w, BOTTOM_BAR_H)
+        self.rpm_rect = pygame.Rect(sw - vs_w, bot_y, vs_w, BOTTOM_BAR_H)
 
         pygame.draw.rect(self.screen, colors.PANEL_BG, self.battery_rect)
         pygame.draw.rect(self.screen, colors.PANEL_BG, self.messages_rect)
-        pygame.draw.rect(self.screen, colors.PANEL_BG, self.vspeed_rect)
+        pygame.draw.rect(self.screen, colors.PANEL_BG, self.rpm_rect)
         pygame.draw.line(self.screen, colors.GREY,
                          (self.battery_rect.right, self.battery_rect.top),
                          (self.battery_rect.right, self.battery_rect.bottom), 1)
         pygame.draw.line(self.screen, colors.GREY,
-                         (self.vspeed_rect.left, self.vspeed_rect.top),
-                         (self.vspeed_rect.left, self.vspeed_rect.bottom), 1)
+                         (self.rpm_rect.left, self.rpm_rect.top),
+                         (self.rpm_rect.left, self.rpm_rect.bottom), 1)
 
         battery.draw(self.screen, self.battery_rect,
                      s.bat_voltage, s.bat_current, s.bat_remaining,
                      s.bat2_remaining)
         messages.draw(self.screen, self.messages_rect, s.messages)
-        self._draw_vspeed(s.vspeed)
+        efi_rpm.draw(self.screen, self.rpm_rect, s.efi_rpm)
 
     def _draw_vspeed(self, vspeed: float):
         r = self.vspeed_rect
+        surface = self.screen
+        bg = pygame.Surface((r.width, r.height), pygame.SRCALPHA)
+        bg.fill((20, 20, 20, 200))
+        surface.blit(bg, (r.x, r.y))
         font = get_font(14)
         color = colors.GREEN if abs(vspeed) < 2.0 else colors.YELLOW
         label = font.render(f"VS {vspeed:+5.1f}m/s", True, color)
-        surface = self.screen
         surface.blit(label, (r.x + (r.width - label.get_width()) // 2,
                              r.y + (r.height - label.get_height()) // 2))

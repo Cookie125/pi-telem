@@ -1,4 +1,4 @@
-"""EFI RPM readout (EFI_STATUS), compass row, same column as altitude tapes."""
+"""EFI RPM readout (EFI_STATUS), bottom bar right."""
 
 import pygame
 
@@ -7,7 +7,7 @@ from hud.fonts import get_font
 
 
 def draw(surface: pygame.Surface, rect: pygame.Rect, rpm: float) -> None:
-    """Draw RPM in the right strip, same row as the compass (below alt tapes in layout)."""
+    """Draw RPM in the bottom strip (right of messages)."""
     x, y, w, h = rect.x, rect.y, rect.width, rect.height
     bg = pygame.Surface((w, h), pygame.SRCALPHA)
     bg.fill((20, 20, 20, 200))
