@@ -97,7 +97,7 @@ class MavlinkReader(threading.Thread):
               f"component {self._conn.target_component}")
         self.state.update(lambda s: setattr(s, "connected", True))
         if self._rx_only:
-            print("[mavlink_reader] rx-only: not sending stream/home/mission requests")
+            print("[mavlink_reader] receive-only: not sending stream/home/mission requests")
         else:
             self._request_streams()
             self._mission_pull_t = time.monotonic() - 30.0  # mission download soon after connect
