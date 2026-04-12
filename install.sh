@@ -28,6 +28,7 @@ python3 -m venv "$VENV_DIR"
 
 # ---- systemd service ----
 echo "[4/5] Installing systemd service..."
+USER_UID="$(id -u)"
 sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<EOF
 [Unit]
 Description=MAVLink Telemetry HUD
@@ -40,10 +41,10 @@ User=$USER
 WorkingDirectory=$SCRIPT_DIR
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/${USER}/.Xauthority
+Environment=XDG_RUNTIME_DIR=/run/user/${USER_UID}
 ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py --baud 115200 --map --terrain
 Restart=always
 RestartSec=5
-StartLimitIntervalSec=0
 
 [Install]
 WantedBy=multi-user.target
