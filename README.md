@@ -16,7 +16,7 @@ MAVLink telemetry HUD for Raspberry Pi Zero 2 W. Reads telemetry from an RFD900 
 - GPS fix type and satellite count
 - Battery voltage, current, remaining %, and optional second-pack “Fuel %” when present
 - **HOME** distance and bearing in the left strip below the compass (compact **H …** label; scales down if the column is narrow)
-- **PIP map** (**on by default**; `--no-map` to disable): satellite **Esri World Imagery** by default (or any XYZ tile URL), with **HOME**, **mission waypoints** (when **`--tx`** enables uplink), dotted route (including segments that cross off the PIP), and ownship heading arrow; with **HOME** set, zoom/pan **auto-frames aircraft + HOME** (cap `--map-zoom`); tiles cache under `~/.cache/pi-telem/map_tiles/` per tile URL
+- **PIP map** (**on by default**; `--no-map` to disable): satellite **Esri World Imagery** by default (or any XYZ tile URL), with **HOME**, **mission waypoints** on the route when **`MISSION_ITEM_*`** messages are available (**`--tx`** pulls the mission from the FC; **receive-only** can still show waypoints if **another GCS** downloads the mission on the **same MAVLink stream**), dotted route (including segments that cross off the PIP), and ownship heading arrow; with **HOME** set, zoom/pan **auto-frames aircraft + HOME** (cap `--map-zoom`); tiles cache under `~/.cache/pi-telem/map_tiles/` per tile URL
 - STATUSTEXT message log
 - Auto-start on boot via systemd (`install.sh`)
 
@@ -121,7 +121,7 @@ Equivalent short help:
 - **Default imagery** is **Esri World Imagery** (satellite). Override **`--map-tile-url`** for other XYZ providers; obey each provider’s terms.
 - Tiles are cached on disk under **`~/.cache/pi-telem/map_tiles/<url-hash>/…`** so changing providers does not mix cached files.
 - **Offline:** previously downloaded tiles still load; new areas need connectivity (or pre-cache by panning while online).
-- Waypoint positions on the map require **mission items** on the HUD. **By default** the HUD is **receive-only** and does **not** request the mission — use **`--tx`** when the link supports uplink, or rely on another GCS if your setup supports it.
+- Waypoint positions on the map require **`MISSION_ITEM_*`** data in the telemetry stream. With **`--tx`**, the HUD requests the mission from the autopilot. In **receive-only** mode it does **not** send requests, but it **still ingests** `MISSION_COUNT` / `MISSION_ITEM_INT` if they appear on the wire (e.g. **Mission Planner** or another device on the same radio link requested the mission first). If nothing on the link triggers a mission download, the route stays empty.
 - Waypoint labels use **MAVLink mission sequence** (0-based), matching `MISSION_CURRENT.seq` and the status **WP:** line.
 - **Auto-fit zoom** (when HOME is set) uses **aircraft + HOME only** — mission waypoints are drawn and routed, but they do **not** change the zoom level (so a distant WP does not shrink the map).
 

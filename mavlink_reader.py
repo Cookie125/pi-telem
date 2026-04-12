@@ -326,7 +326,8 @@ class MavlinkReader(threading.Thread):
         self._mis_buf[seq] = pt
         miss = self._mission_missing_seq()
         if miss is not None:
-            self._request_mission_seq(miss)
+            if not self._rx_only:
+                self._request_mission_seq(miss)
             return
         wps = [self._mis_buf.get(i) for i in range(self._mis_n)]
         self._commit_mission(wps)
@@ -335,8 +336,6 @@ class MavlinkReader(threading.Thread):
         self._mis_buf = {}
 
     def _handle_mission_count(self, msg):
-        if self._rx_only:
-            return
         if msg.mission_type != mavutil.mavlink.MAV_MISSION_TYPE_MISSION:
             return
         if not self._mis_busy:
@@ -350,7 +349,10 @@ class MavlinkReader(threading.Thread):
             self._mis_busy = False
             self._mis_n = None
             return
-        self._request_mission_seq(0)
+        # Receive-only: cannot request items; still accept MISSION_ITEM_* if another GCS
+        # (or the FC) causes them to be transmitted on the link.
+        if not self._rx_only:
+            self._request_mission_seq(0)
 
     def _handle_mission_item_int(self, msg):
         if msg.mission_type != mavutil.mavlink.MAV_MISSION_TYPE_MISSION:
