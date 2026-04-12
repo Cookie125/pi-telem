@@ -10,7 +10,6 @@ from hud import status_bar
 from hud import battery
 from hud import messages
 from hud import home_info
-from hud import wind
 from hud.home_info import _bearing
 from hud.fonts import get_font
 
@@ -27,11 +26,12 @@ M_TO_FT = 3.28084
 
 class HUDRenderer:
     def __init__(self, screen: pygame.Surface, state, alt_unit: str = "m",
-                 terrain_sampler=None):
+                 terrain_sampler=None, map_sampler=None):
         self.screen = screen
         self.state = state
         self.alt_unit = alt_unit
         self._terrain_sampler = terrain_sampler
+        self._map_sampler = map_sampler
         self._terrain_renderer = None
         if terrain_sampler is not None:
             from hud.terrain import TerrainRenderer
@@ -79,12 +79,20 @@ class HUDRenderer:
         # HOME text only in left strip (same column as speed tape), bounded by divider
         self.home_info_rect = pygame.Rect(0, info_y, spd_w, COMPASS_BAR_H)
 
-        # Wind indicator overlaid at bottom-left of horizon, right of speed tape
-        wind_size = 80
-        self.wind_rect = pygame.Rect(
-            spd_w + 6,
-            self.horizon_rect.bottom - wind_size - 6,
-            wind_size, wind_size)
+        # Wind is drawn in the status bar (top right, left of GPS); see status_bar.py
+
+        # Map PIP bottom-left of main band, right of speed tape (above compass row)
+        self.map_pip_rect = None
+        if self._map_sampler is not None:
+            from hud.map_pip import PIP_H, PIP_W
+
+            margin = 8
+            self.map_pip_rect = pygame.Rect(
+                spd_w + margin,
+                info_y - PIP_H - margin,
+                PIP_W,
+                PIP_H,
+            )
 
     def draw(self):
         s = self.state.snapshot()
@@ -125,6 +133,13 @@ class HUDRenderer:
             home_marker_xy=home_xy,
         )
 
+        # Map PIP (tiles + markers) over horizon, before side tapes
+        if self._map_sampler is not None and self.map_pip_rect is not None:
+            _, msurf = self._map_sampler.get_latest()
+            if msurf is not None:
+                self.screen.blit(msurf, self.map_pip_rect.topleft)
+                pygame.draw.rect(self.screen, colors.GREY, self.map_pip_rect, 1)
+
         # Tapes overlay on sides
         speed_tape.draw(self.screen, self.speed_rect, s.airspeed, s.groundspeed)
         unit = self.alt_unit
@@ -133,10 +148,6 @@ class HUDRenderer:
                       label=f"REL {unit}", color_accent=colors.GREEN)
         alt_tape.draw(self.screen, self.alt_msl_rect, s.altitude_msl * conv,
                       label=f"MSL {unit}", color_accent=colors.CYAN)
-
-        # Wind indicator
-        wind.draw(self.screen, self.wind_rect,
-                  s.wind_dir, s.wind_speed, s.heading, s.wind_valid)
 
         # Compass ribbon between tapes, below horizon
         home_brg = None

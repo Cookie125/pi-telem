@@ -2,7 +2,7 @@ import copy
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -19,6 +19,9 @@ class _StateFields:
     wp_seq: int = -1        # MISSION_CURRENT.seq (shown as-is; FCs vary), -1 = unknown
     wp_total: int = 0       # mission item count from MISSION_CURRENT.total
     wp_dist_m: float = -1.0  # distance to current WP (m), -1 = unknown
+    # Loaded via MAVLink mission download (MISSION_ITEM_INT); index = seq; None = no lat/lon
+    mission_wps: List[Optional[Tuple[float, float]]] = field(default_factory=list)
+    mission_version: int = 0  # increments when mission_wps changes (map PIP refresh)
     altitude_msl: float = 0.0  # metres above mean sea level
     airspeed: float = 0.0   # m/s
     groundspeed: float = 0.0

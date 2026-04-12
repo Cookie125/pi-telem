@@ -39,8 +39,23 @@ def main():
         terrain_sampler = TerrainSampler(state, db=args.terrain_db)
         terrain_sampler.start()
 
-    renderer = HUDRenderer(screen, state, alt_unit=args.alt_unit,
-                           terrain_sampler=terrain_sampler)
+    map_sampler = None
+    if args.map:
+        from hud.map_pip import MapPipSampler
+        map_sampler = MapPipSampler(
+            state,
+            zoom=args.map_zoom,
+            tile_url_template=args.map_tile_url,
+        )
+        map_sampler.start()
+
+    renderer = HUDRenderer(
+        screen,
+        state,
+        alt_unit=args.alt_unit,
+        terrain_sampler=terrain_sampler,
+        map_sampler=map_sampler,
+    )
     clock = pygame.time.Clock()
 
     running = True

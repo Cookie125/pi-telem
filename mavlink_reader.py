@@ -1,7 +1,26 @@
 import threading
 import time
+from typing import Optional
 
 from pymavlink import mavutil
+
+
+def _latlon_from_mission_item_int(msg) -> Optional[tuple]:
+    """Return (lat, lon) in degrees or None if item has no global position."""
+    lat = msg.x / 1.0e7
+    lon = msg.y / 1.0e7
+    if abs(lat) < 1e-7 and abs(lon) < 1e-7:
+        return None
+    return lat, lon
+
+
+def _latlon_from_mission_item(msg) -> Optional[tuple]:
+    """MISSION_ITEM uses float degrees for x/y."""
+    lat = float(msg.x)
+    lon = float(msg.y)
+    if abs(lat) < 1e-7 and abs(lon) < 1e-7:
+        return None
+    return lat, lon
 
 
 class MavlinkReader(threading.Thread):
@@ -14,6 +33,12 @@ class MavlinkReader(threading.Thread):
         self.state = state
         self._stop_event = threading.Event()
         self._conn = None
+        # Mission download (MISSION_REQUEST_LIST / ITEM_INT)
+        self._mis_busy = False
+        self._mis_n: Optional[int] = None
+        self._mis_buf: dict = {}
+        self._mis_t0 = 0.0
+        self._mission_pull_t = 0.0
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -44,6 +69,7 @@ class MavlinkReader(threading.Thread):
               f"component {self._conn.target_component}")
         self.state.update(lambda s: setattr(s, "connected", True))
         self._request_streams()
+        self._mission_pull_t = time.monotonic() - 30.0  # mission download soon after connect
 
     def _request_streams(self):
         """Ask the vehicle to send us the data streams we care about."""
@@ -84,6 +110,14 @@ class MavlinkReader(threading.Thread):
 
         while not self._stop_event.is_set():
             now = time.monotonic()
+            if self._mis_busy and (now - self._mis_t0) > 15.0:
+                self._mis_busy = False
+                self._mis_n = None
+                self._mis_buf = {}
+            if now - self._mission_pull_t >= 25.0:
+                self._mission_pull_t = now
+                self._start_mission_download()
+
             if now - last_heartbeat_sent >= 1.0:
                 self._send_heartbeat()
                 last_heartbeat_sent = now
@@ -219,6 +253,104 @@ class MavlinkReader(threading.Thread):
             s.messages.append((time.time(), text))
         self.state.update(_up)
 
+    def _start_mission_download(self) -> None:
+        if self._conn is None or self._mis_busy:
+            return
+        self._mis_busy = True
+        self._mis_n = None
+        self._mis_buf = {}
+        self._mis_t0 = time.monotonic()
+        try:
+            self._conn.mav.mission_request_list_send(
+                self._conn.target_system,
+                self._conn.target_component,
+                mavutil.mavlink.MAV_MISSION_TYPE_MISSION,
+            )
+        except Exception:
+            self._mis_busy = False
+
+    def _request_mission_seq(self, seq: int) -> None:
+        if self._conn is None:
+            return
+        try:
+            self._conn.mav.mission_request_int_send(
+                self._conn.target_system,
+                self._conn.target_component,
+                seq,
+                mavutil.mavlink.MAV_MISSION_TYPE_MISSION,
+            )
+        except Exception:
+            pass
+
+    def _mission_missing_seq(self) -> Optional[int]:
+        if self._mis_n is None:
+            return None
+        for i in range(self._mis_n):
+            if i not in self._mis_buf:
+                return i
+        return None
+
+    def _commit_mission(self, wps: list) -> None:
+        def _up(s):
+            s.mission_wps = wps
+            s.mission_version += 1
+
+        self.state.update(_up)
+
+    def _finish_mission_item(self, seq: int, pt: Optional[tuple]) -> None:
+        if not self._mis_busy or self._mis_n is None:
+            return
+        self._mis_buf[seq] = pt
+        miss = self._mission_missing_seq()
+        if miss is not None:
+            self._request_mission_seq(miss)
+            return
+        wps = [self._mis_buf.get(i) for i in range(self._mis_n)]
+        self._commit_mission(wps)
+        self._mis_busy = False
+        self._mis_n = None
+        self._mis_buf = {}
+
+    def _handle_mission_count(self, msg):
+        if msg.mission_type != mavutil.mavlink.MAV_MISSION_TYPE_MISSION:
+            return
+        if not self._mis_busy:
+            self._mis_busy = True
+            self._mis_t0 = time.monotonic()
+        self._mis_buf = {}
+        n = int(msg.count)
+        self._mis_n = n
+        if n == 0:
+            self._commit_mission([])
+            self._mis_busy = False
+            self._mis_n = None
+            return
+        self._request_mission_seq(0)
+
+    def _handle_mission_item_int(self, msg):
+        if msg.mission_type != mavutil.mavlink.MAV_MISSION_TYPE_MISSION:
+            return
+        seq = int(msg.seq)
+        self._finish_mission_item(seq, _latlon_from_mission_item_int(msg))
+
+    def _handle_mission_item(self, msg):
+        mt = getattr(msg, "mission_type", mavutil.mavlink.MAV_MISSION_TYPE_MISSION)
+        if mt != mavutil.mavlink.MAV_MISSION_TYPE_MISSION:
+            return
+        seq = int(msg.seq)
+        self._finish_mission_item(seq, _latlon_from_mission_item(msg))
+
+    def _handle_mission_ack(self, msg):
+        if msg.mission_type != mavutil.mavlink.MAV_MISSION_TYPE_MISSION:
+            return
+        if not self._mis_busy:
+            return
+        if msg.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
+            return
+        self._mis_busy = False
+        self._mis_n = None
+        self._mis_buf = {}
+
     _handlers = {
         "HEARTBEAT": _handle_heartbeat,
         "ATTITUDE": _handle_attitude,
@@ -230,6 +362,10 @@ class MavlinkReader(threading.Thread):
         "HOME_POSITION": _handle_home_position,
         "EFI_STATUS": _handle_efi_status,
         "MISSION_CURRENT": _handle_mission_current,
+        "MISSION_COUNT": _handle_mission_count,
+        "MISSION_ITEM_INT": _handle_mission_item_int,
+        "MISSION_ITEM": _handle_mission_item,
+        "MISSION_ACK": _handle_mission_ack,
         "NAV_CONTROLLER_OUTPUT": _handle_nav_controller_output,
         "WIND": _handle_wind,
         "STATUSTEXT": _handle_statustext,

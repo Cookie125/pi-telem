@@ -57,6 +57,31 @@ connection string examples:
         default="SRTM1",
         help="Terrain elevation source (default: SRTM1)",
     )
+    p.add_argument(
+        "--map",
+        action="store_true",
+        help="Enable PIP map (satellite tiles + HOME / ownship; uses ~/.cache/pi-telem/map_tiles)",
+    )
+    p.add_argument(
+        "--map-zoom",
+        type=int,
+        default=14,
+        help=(
+            "Map tile zoom 0–19 (default: 14). With --map and HOME set, zoom/pan "
+            "auto-fits aircraft + HOME + mission on the PIP; this value caps max zoom-in."
+        ),
+    )
+    p.add_argument(
+        "--map-tile-url",
+        default=(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        ),
+        help=(
+            "XYZ tile URL template with {z} {x} {y} (order may vary; Esri uses {z}/{y}/{x}) "
+            "(default: Esri World Imagery satellite; obey provider terms)"
+        ),
+    )
 
     args = p.parse_args()
 
