@@ -1,6 +1,7 @@
+import os
 import threading
 import time
-from typing import Optional
+from typing import List, Optional
 
 from pymavlink import mavutil
 
@@ -26,14 +27,23 @@ def _latlon_from_mission_item(msg) -> Optional[tuple]:
 class MavlinkReader(threading.Thread):
     """Background thread that reads MAVLink and updates TelemetryState."""
 
-    def __init__(self, connection_string, baud, state, rx_only: bool = False):
+    def __init__(
+        self,
+        connections: List[str],
+        baud: int,
+        state,
+        rx_only: bool = False,
+    ):
         super().__init__(daemon=True)
-        self.connection_string = connection_string
+        if not connections:
+            raise ValueError("connections must be non-empty")
+        self.connections = connections
         self.baud = baud
         self.state = state
         self._rx_only = rx_only
         self._stop_event = threading.Event()
         self._conn = None
+        self._conn_idx = 0
         # Mission download (MISSION_REQUEST_LIST / ITEM_INT)
         self._mis_busy = False
         self._mis_n: Optional[int] = None
@@ -47,25 +57,42 @@ class MavlinkReader(threading.Thread):
         self._stop_event.set()
 
     def run(self):
+        n = len(self.connections)
+        hb_timeout = 5.0 if n > 1 else 30.0
         while not self._stop_event.is_set():
+            conn = self.connections[self._conn_idx % n]
             try:
-                self._connect()
+                if conn.startswith("/dev/") and not os.path.exists(conn):
+                    print(f"[mavlink_reader] skip {conn} (not present)")
+                    self._conn_idx += 1
+                    time.sleep(0.2 if n > 1 else 2.0)
+                    continue
+                self._connect(conn, heartbeat_timeout=hb_timeout)
                 self._loop()
             except Exception as exc:
-                print(f"[mavlink_reader] error: {exc}, reconnecting in 2s")
+                print(f"[mavlink_reader] error on {conn}: {exc!r}, next in 2s")
                 self.state.update(lambda s: setattr(s, "connected", False))
+                self._close_conn()
+                self._conn_idx += 1
                 time.sleep(2)
+
+    def _close_conn(self) -> None:
+        if self._conn is None:
+            return
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+        self._conn = None
 
     # -- connection -----------------------------------------------------------
 
-    def _connect(self):
-        print(f"[mavlink_reader] connecting to {self.connection_string} "
-              f"(baud={self.baud})")
-        self._conn = mavutil.mavlink_connection(
-            self.connection_string, baud=self.baud
-        )
-        print("[mavlink_reader] waiting for heartbeat...")
-        self._conn.wait_heartbeat(timeout=30)
+    def _connect(self, conn_str: str, heartbeat_timeout: float) -> None:
+        self._close_conn()
+        print(f"[mavlink_reader] connecting to {conn_str} (baud={self.baud})")
+        self._conn = mavutil.mavlink_connection(conn_str, baud=self.baud)
+        print(f"[mavlink_reader] waiting for heartbeat (timeout {heartbeat_timeout}s)...")
+        self._conn.wait_heartbeat(timeout=heartbeat_timeout)
         print(f"[mavlink_reader] heartbeat from system {self._conn.target_system} "
               f"component {self._conn.target_component}")
         self.state.update(lambda s: setattr(s, "connected", True))

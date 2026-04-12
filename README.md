@@ -28,10 +28,13 @@ git checkout main
 ./install.sh
 
 # Run against a SITL instance (desktop / dev machine)
-.venv/bin/python main.py --connection udpin:0.0.0.0:14550 --windowed
+.venv/bin/python main.py -c udpin:127.0.0.1:14550 --windowed
 
-# Run against RFD900 hardware on the Pi
-.venv/bin/python main.py --connection /dev/ttyUSB0 --baud 115200
+# Pi / headless: no -c uses UDP :14550 then USB serial (see "Connection strings")
+.venv/bin/python main.py --baud 115200
+
+# Only a specific serial device
+.venv/bin/python main.py -c /dev/ttyUSB0 --baud 115200
 
 # Optional: synthetic vision terrain (needs network once to download DEM tiles)
 .venv/bin/python main.py --connection /dev/ttyUSB0 --terrain --terrain-db SRTM1
@@ -54,14 +57,21 @@ git reset --hard origin/main
 
 Restart the service if you use it: `sudo systemctl restart pitelem`
 
-## Connection Strings
+## Connection strings
 
-The `--connection` flag accepts any `pymavlink` connection string:
+Use **`-c` / `--connection`** with any `pymavlink` string. **Repeat `-c`** to try several links in **round-robin** until a heartbeat is received (missing `/dev/...` nodes are skipped quickly). **If you omit `-c`**, the default order is:
+
+1. `udpin:0.0.0.0:14550` — listen for UDP (e.g. forwarded MAVLink or another machine on the LAN)  
+2. `/dev/ttyUSB0` — common USB–serial (e.g. FTDI)  
+3. `/dev/ttyACM0` — many CDC-ACM USB devices  
+4. `/dev/serial0` — typical name for the Pi GPIO UART when enabled  
+
+With **multiple** `-c` values, the first-heartbeat timeout is **5 s** per attempt; with **one** `-c`, it is **30 s**.
 
 | String | Use |
 |--------|-----|
 | `/dev/ttyUSB0` | Serial (RFD900 via FTDI) |
-| `udpin:0.0.0.0:14550` | UDP listen (SITL default output) |
+| `udpin:0.0.0.0:14550` | UDP listen on all interfaces, port 14550 |
 | `udpout:192.168.1.100:14550` | UDP connect to remote |
 | `tcp:192.168.1.100:5762` | TCP connect to SITL |
 
@@ -69,7 +79,7 @@ The `--connection` flag accepts any `pymavlink` connection string:
 
 | Option | Description |
 |--------|-------------|
-| `-c`, `--connection` | MAVLink connection string (default: `/dev/ttyUSB0`) |
+| `-c`, `--connection` | MAVLink connection; **repeat** for fallback order. **Default** (if omitted): UDP `0.0.0.0:14550`, then `/dev/ttyUSB0`, `/dev/ttyACM0`, `/dev/serial0` |
 | `-b`, `--baud` | Serial baud rate, ignored for UDP/TCP (default: `115200`) |
 | `--rx-only` | **Receive-only:** do not send MAVLink (no stream requests, `HOME_POSITION` pull, or mission download). For a **listen-only** UART (e.g. RFD TX → Pi RX with no Pi TX → RFD RX). HUD works from whatever the vehicle already broadcasts; map **waypoints/route** need mission data from another path or FC broadcast |
 | `-r`, `--resolution` | Display size `WxH` (default: `800x480`) |
@@ -85,7 +95,7 @@ The `--connection` flag accepts any `pymavlink` connection string:
 Equivalent short help:
 
 ```
--c, --connection   MAVLink connection string
+-c, --connection   CONN (repeat for fallback; see README default list)
 -b, --baud           Serial baud rate (default: 115200)
     --rx-only         Do not transmit MAVLink (listen-only link)
 -r, --resolution     WxH (default: 800x480)
@@ -163,18 +173,26 @@ sudo systemctl status pitelem      # check status
 journalctl -u pitelem -f           # tail logs
 ```
 
-Edit the connection string or add flags such as `--terrain` or `--map`:
+The stock unit runs **`main.py --baud 115200`** with **no `-c`**, so it uses the **default connection list** (UDP `:14550`, then USB/UART devices) and keeps **retrying** inside the process. Add `--terrain`, `--map`, or a **fixed** link with `-c` if you want only one interface:
 
 ```bash
 sudo systemctl edit pitelem
 ```
 
-Example override:
+Example override (terrain + map; still uses default multi-connection):
 
 ```ini
 [Service]
 ExecStart=
-ExecStart=/home/pi/pi-telem/.venv/bin/python /home/pi/pi-telem/main.py --connection /dev/ttyUSB0 --baud 115200 --terrain --map
+ExecStart=/home/pi/pi-telem/.venv/bin/python /home/pi/pi-telem/main.py --baud 115200 --terrain --map
+```
+
+Example: **only** serial (no UDP attempt):
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/home/pi/pi-telem/.venv/bin/python /home/pi/pi-telem/main.py -c /dev/ttyUSB0 --baud 115200
 ```
 
 Then:

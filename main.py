@@ -31,7 +31,7 @@ def main():
 
     state = TelemetryState()
     reader = MavlinkReader(
-        args.connection, args.baud, state, rx_only=args.rx_only
+        args.connections, args.baud, state, rx_only=args.rx_only
     )
     reader.start()
 

@@ -38,7 +38,7 @@ Type=simple
 User=$USER
 WorkingDirectory=$SCRIPT_DIR
 Environment=SDL_VIDEODRIVER=kmsdrm
-ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py --connection /dev/ttyUSB0 --baud 115200
+ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py --baud 115200
 Restart=on-failure
 RestartSec=5
 
@@ -53,12 +53,13 @@ echo "[5/5] Done."
 echo ""
 echo "The service is installed but NOT started."
 echo ""
-echo "  Edit the connection in the service file if needed:"
+echo "  Default MAVLink: UDP listen 0.0.0.0:14550, then /dev/ttyUSB0, ttyACM0, serial0."
+echo "  Override connections if needed:"
 echo "    sudo systemctl edit ${SERVICE_NAME}"
 echo ""
 echo "  Start now:   sudo systemctl start ${SERVICE_NAME}"
 echo "  View logs:   journalctl -u ${SERVICE_NAME} -f"
-echo "  Run manually: $VENV_DIR/bin/python $SCRIPT_DIR/main.py --connection udpin:0.0.0.0:14550 --windowed"
+echo "  Run manually (desktop): $VENV_DIR/bin/python $SCRIPT_DIR/main.py --windowed -c udpin:127.0.0.1:14550"
 echo ""
 echo "  SVS terrain is NOT enabled in the default service. To enable it:"
 echo "    sudo systemctl edit $SERVICE_NAME"
