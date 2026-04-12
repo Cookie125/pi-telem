@@ -38,7 +38,7 @@ Type=simple
 User=$USER
 WorkingDirectory=$SCRIPT_DIR
 Environment=SDL_VIDEODRIVER=kmsdrm
-ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py --baud 115200
+ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py --baud 115200 --map --terrain
 Restart=on-failure
 RestartSec=5
 
@@ -59,10 +59,8 @@ echo "    sudo systemctl edit ${SERVICE_NAME}"
 echo ""
 echo "  Start now:   sudo systemctl start ${SERVICE_NAME}"
 echo "  View logs:   journalctl -u ${SERVICE_NAME} -f"
-echo "  Run manually (desktop): $VENV_DIR/bin/python $SCRIPT_DIR/main.py --windowed -c udpin:127.0.0.1:14550"
+echo "  Run manually (desktop / SITL uplink): $VENV_DIR/bin/python $SCRIPT_DIR/main.py --windowed -c udpin:127.0.0.1:14550 --tx"
 echo ""
-echo "  SVS terrain is NOT enabled in the default service. To enable it:"
-echo "    sudo systemctl edit $SERVICE_NAME"
-echo "    # set ExecStart to: .../main.py ... --terrain [--terrain-db SRTM1]"
+echo "  Default service flags: --map --terrain (receive-only MAVLink unless you add --tx)."
 echo ""
 echo "You may need to log out and back in for the dialout group to take effect."
