@@ -33,21 +33,29 @@ def _fmt_dist(metres):
 
 
 def draw(surface: pygame.Surface, rect: pygame.Rect, state):
-    """Draw home distance, bearing, and vertical speed in the info bar."""
+    """Draw HOME distance and bearing in the left strip (width ``rect``); clipped to divider."""
     x, y, w, h = rect.x, rect.y, rect.width, rect.height
-    font = get_font(14)
-    pad = 8
-    ty = y + (h - font.get_height()) // 2
+    font = get_font(12)
+    pad = min(8, max(4, w // 12))
 
-    # Home distance and bearing
+    clip_prev = surface.get_clip()
+    surface.set_clip(rect)
+
     if state.home_set and (state.lat != 0.0 or state.lon != 0.0):
         dist = _haversine(state.lat, state.lon, state.home_lat, state.home_lon)
         brg = _bearing(state.lat, state.lon, state.home_lat, state.home_lon)
-        text = f"HOME {_fmt_dist(dist)} {brg:03.0f}\u00b0"
-        color = colors.WHITE
+        # Two lines: distance and bearing stay inside narrow strip by speed-tape divider
+        line1 = f"HOME {_fmt_dist(dist)}"
+        line2 = f"{brg:03.0f}\u00b0"
+        s1 = font.render(line1, True, colors.WHITE)
+        s2 = font.render(line2, True, colors.WHITE)
+        gap = 1
+        total_h = s1.get_height() + gap + s2.get_height()
+        y0 = y + (h - total_h) // 2
+        surface.blit(s1, (x + pad, y0))
+        surface.blit(s2, (x + pad, y0 + s1.get_height() + gap))
     else:
-        text = "HOME ---"
-        color = colors.GREY
+        surf = font.render("HOME ---", True, colors.GREY)
+        surface.blit(surf, (x + pad, y + (h - surf.get_height()) // 2))
 
-    surf = font.render(text, True, color)
-    surface.blit(surf, (x + pad, ty))
+    surface.set_clip(clip_prev)

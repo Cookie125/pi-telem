@@ -10,11 +10,19 @@ PPD = 4.0
 
 
 def _draw_home_marker_3d(work: pygame.Surface, x: int, y: int) -> None:
-    """HOME projected into SVS: large bold white ``H`` centered on the projected point."""
+    """HOME projected into SVS: large bold white ``H`` with black outline."""
     font = get_font(32, bold=True)
-    glyph = font.render("H", True, colors.WHITE)
-    rect = glyph.get_rect(center=(x, y))
-    work.blit(glyph, rect)
+    fg = font.render("H", True, colors.WHITE)
+    outline = font.render("H", True, colors.BLACK)
+    w, h = fg.get_size()
+    base_x = x - w // 2
+    base_y = y - h // 2
+    for dx in (-2, -1, 0, 1, 2):
+        for dy in (-2, -1, 0, 1, 2):
+            if dx == 0 and dy == 0:
+                continue
+            work.blit(outline, (base_x + dx, base_y + dy))
+    work.blit(fg, (base_x, base_y))
 
 
 def work_surface_diag(w: int, h: int) -> int:

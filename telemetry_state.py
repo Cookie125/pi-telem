@@ -15,6 +15,10 @@ class _StateFields:
     # Navigation
     heading: float = 0.0    # degrees 0-360
     altitude: float = 0.0   # metres relative (AGL)
+    # Mission / waypoint (MISSION_CURRENT, NAV_CONTROLLER_OUTPUT)
+    wp_seq: int = -1        # MISSION_CURRENT.seq (shown as-is; FCs vary), -1 = unknown
+    wp_total: int = 0       # mission item count from MISSION_CURRENT.total
+    wp_dist_m: float = -1.0  # distance to current WP (m), -1 = unknown
     altitude_msl: float = 0.0  # metres above mean sea level
     airspeed: float = 0.0   # m/s
     groundspeed: float = 0.0
@@ -23,7 +27,8 @@ class _StateFields:
     # Battery
     bat_voltage: float = 0.0    # volts
     bat_current: float = 0.0    # amps
-    bat_remaining: int = -1     # percent, -1 = unknown
+    bat_remaining: int = -1     # percent, -1 = unknown (battery 1)
+    bat2_remaining: int = -1    # percent from BATTERY_STATUS id=1 (e.g. fuel), -1 = unknown
 
     # GPS
     gps_fix: int = 0        # 0=no, 2=2D, 3=3D
@@ -36,6 +41,9 @@ class _StateFields:
     home_lon: float = 0.0
     home_alt: float = 0.0
     home_set: bool = False
+
+    # EFI (EFI_STATUS MAVLink)
+    efi_rpm: float = -1.0      # RPM, -1 = unknown / no data
 
     # Wind
     wind_dir: float = 0.0      # degrees (direction wind is coming FROM)

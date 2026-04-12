@@ -1,5 +1,3 @@
-import time
-
 import pygame
 
 from hud import colors
@@ -10,7 +8,7 @@ GPS_FIX_NAMES = {0: "No GPS", 1: "No Fix", 2: "2D", 3: "3D",
 
 
 def draw(surface: pygame.Surface, rect: pygame.Rect, state):
-    """Draw the top status bar with mode, arm, GPS, and UTC time."""
+    """Draw the top status bar with mode, arm, GPS, and link status."""
     x, y, w, h = rect.x, rect.y, rect.width, rect.height
 
     pygame.draw.rect(surface, colors.PANEL_BG, rect)
@@ -35,6 +33,19 @@ def draw(surface: pygame.Surface, rect: pygame.Rect, state):
     surface.blit(arm_surf, (cursor_x, ty))
     cursor_x += arm_surf.get_width() + pad * 3
 
+    # Waypoint: current/total (MISSION_CURRENT) and distance (NAV_CONTROLLER_OUTPUT)
+    _seq = state.wp_seq
+    if state.wp_total > 0 and 0 <= _seq < 65530:
+        cur = _seq  # raw MISSION_CURRENT.seq (same numbering as your GCS / FC)
+        d = state.wp_dist_m
+        if 0.0 <= d < 65000.0:
+            wp_text = f"WP: {cur}/{state.wp_total} {d:.0f}m"
+        else:
+            wp_text = f"WP: {cur}/{state.wp_total}"
+        wp_surf = font_sm.render(wp_text, True, colors.WHITE)
+        surface.blit(wp_surf, (cursor_x, ty + 2))
+        cursor_x += wp_surf.get_width() + pad * 3
+
     # Connection indicator
     if not state.connected:
         conn_surf = font_sm.render("NO LINK", True, colors.RED)
@@ -43,13 +54,6 @@ def draw(surface: pygame.Surface, rect: pygame.Rect, state):
 
     # Right-aligned items
     right_x = x + w - pad
-
-    # UTC time
-    utc_str = time.strftime("%H:%M:%S", time.gmtime())
-    utc_surf = font_sm.render(f"UTC {utc_str}", True, colors.WHITE)
-    right_x -= utc_surf.get_width()
-    surface.blit(utc_surf, (right_x, ty + 2))
-    right_x -= pad * 3
 
     # GPS
     fix_name = GPS_FIX_NAMES.get(state.gps_fix, f"Fix:{state.gps_fix}")

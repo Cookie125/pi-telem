@@ -167,11 +167,17 @@ class MavlinkReader(threading.Thread):
         self.state.update(_up)
 
     def _handle_battery_status(self, msg):
+        """BATTERY_STATUS id 0 = primary (HUD battery row); id 1 = second pack (Fuel %)."""
+
         def _up(s):
-            if msg.voltages[0] != 65535:
-                s.bat_voltage = msg.voltages[0] / 1000.0
-            s.bat_current = msg.current_battery / 100.0
-            s.bat_remaining = msg.battery_remaining
+            bid = msg.id
+            if bid == 0:
+                if msg.voltages[0] != 65535:
+                    s.bat_voltage = msg.voltages[0] / 1000.0
+                s.bat_current = msg.current_battery / 100.0
+                s.bat_remaining = msg.battery_remaining
+            elif bid == 1:
+                s.bat2_remaining = msg.battery_remaining
         self.state.update(_up)
 
     def _handle_home_position(self, msg):
@@ -180,6 +186,22 @@ class MavlinkReader(threading.Thread):
             s.home_lon = msg.longitude / 1e7
             s.home_alt = msg.altitude / 1000.0
             s.home_set = True
+        self.state.update(_up)
+
+    def _handle_efi_status(self, msg):
+        def _up(s):
+            s.efi_rpm = float(msg.rpm)
+        self.state.update(_up)
+
+    def _handle_mission_current(self, msg):
+        def _up(s):
+            s.wp_seq = int(msg.seq)
+            s.wp_total = int(msg.total)
+        self.state.update(_up)
+
+    def _handle_nav_controller_output(self, msg):
+        def _up(s):
+            s.wp_dist_m = float(msg.wp_dist)
         self.state.update(_up)
 
     def _handle_wind(self, msg):
@@ -206,6 +228,9 @@ class MavlinkReader(threading.Thread):
         "SYS_STATUS": _handle_sys_status,
         "BATTERY_STATUS": _handle_battery_status,
         "HOME_POSITION": _handle_home_position,
+        "EFI_STATUS": _handle_efi_status,
+        "MISSION_CURRENT": _handle_mission_current,
+        "NAV_CONTROLLER_OUTPUT": _handle_nav_controller_output,
         "WIND": _handle_wind,
         "STATUSTEXT": _handle_statustext,
     }
