@@ -105,7 +105,6 @@ class MavlinkReader(threading.Thread):
         )
 
     def _loop(self):
-        last_heartbeat_sent = 0.0
         last_home_request = 0.0
 
         while not self._stop_event.is_set():
@@ -118,9 +117,6 @@ class MavlinkReader(threading.Thread):
                 self._mission_pull_t = now
                 self._start_mission_download()
 
-            if now - last_heartbeat_sent >= 1.0:
-                self._send_heartbeat()
-                last_heartbeat_sent = now
             if now - last_home_request >= 5.0:
                 self._request_home()
                 last_home_request = now
@@ -135,13 +131,6 @@ class MavlinkReader(threading.Thread):
             handler = self._handlers.get(mtype)
             if handler:
                 handler(self, msg)
-
-    def _send_heartbeat(self):
-        self._conn.mav.heartbeat_send(
-            mavutil.mavlink.MAV_TYPE_GCS,
-            mavutil.mavlink.MAV_AUTOPILOT_INVALID,
-            0, 0, 0,
-        )
 
     # -- message handlers -----------------------------------------------------
 

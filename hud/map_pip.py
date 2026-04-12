@@ -36,7 +36,7 @@ ROUTE_DOT_RGBA = (220, 235, 255, 115)
 ROUTE_DOT_SPACING_PX = 5
 ROUTE_DOT_RADIUS = 1
 
-# When HOME is set, fit aircraft + home + mission WPs in the PIP (with margin)
+# When HOME is set, fit aircraft + HOME in the PIP (with margin); mission WPs drawn but not used for zoom
 FIT_MARGIN_PX = 8
 # Rebuild a bit more often while auto-framing so zoom/pan tracks
 AUTO_FIT_MOVE_THRESH_M = 12.0
