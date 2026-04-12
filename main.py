@@ -17,7 +17,7 @@ from hud import fonts
 def main():
     args = parse_args()
 
-    # Allow KMS/DRM framebuffer on Pi OS Lite (no X11)
+    # Framebuffer fallback when no X11 display is set (e.g. SSH / console without DISPLAY)
     if "DISPLAY" not in os.environ and "SDL_VIDEODRIVER" not in os.environ:
         os.environ["SDL_VIDEODRIVER"] = "kmsdrm"
 
