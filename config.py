@@ -68,7 +68,8 @@ connection string examples:
         default=14,
         help=(
             "Map tile zoom 0–19 (default: 14). With --map and HOME set, zoom/pan "
-            "auto-fits aircraft + HOME + mission on the PIP; this value caps max zoom-in."
+            "auto-fits aircraft + HOME on the PIP (mission WPs are drawn but not used "
+            "for scale); this value caps max zoom-in."
         ),
     )
     p.add_argument(
