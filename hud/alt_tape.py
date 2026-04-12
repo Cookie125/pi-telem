@@ -7,8 +7,8 @@ TICK_SPACING_PX = 3    # pixels per metre
 MAJOR_INTERVAL = 10    # major tick every N metres
 MINOR_INTERVAL = 5
 
-# Title strip above scrolling tape (fits REL/MSL label without overlapping ticks)
-LABEL_BAND_H = 24
+# 800x480 / ~7": title strip above scrolling tape
+LABEL_BAND_H = 20
 
 
 def draw(surface: pygame.Surface, rect: pygame.Rect, altitude: float,
@@ -17,8 +17,8 @@ def draw(surface: pygame.Surface, rect: pygame.Rect, altitude: float,
     x, y, w, h = rect.x, rect.y, rect.width, rect.height
     acc = color_accent or colors.GREEN
 
-    font = get_font(14)
-    font_sm = get_font(11)
+    font = get_font(11)
+    font_sm = get_font(9)
 
     label_h = LABEL_BAND_H if h > LABEL_BAND_H + 48 else 0
     body_y = y + label_h
@@ -28,12 +28,10 @@ def draw(surface: pygame.Surface, rect: pygame.Rect, altitude: float,
         body_y = y
         body_h = h
 
-    cx = x + w // 2
     cy = body_y + body_h // 2
 
     clip_prev = surface.get_clip()
 
-    # Title box above scrolling region (does not scroll)
     if label_h > 0:
         band = pygame.Rect(x, y, w, label_h)
         pygame.draw.rect(surface, colors.PANEL_BG, band)
@@ -52,6 +50,9 @@ def draw(surface: pygame.Surface, rect: pygame.Rect, altitude: float,
     bg.fill((20, 20, 20, 180))
     surface.blit(bg, (body.x, body.y))
 
+    tick_major = max(5, min(10, w // 4))
+    tick_minor = max(3, min(6, w // 7))
+
     pixels_per_unit = TICK_SPACING_PX
     alt_range = body_h // pixels_per_unit + 20
     base = int(altitude)
@@ -65,22 +66,24 @@ def draw(surface: pygame.Surface, rect: pygame.Rect, altitude: float,
             continue
 
         if val % MAJOR_INTERVAL == 0:
-            pygame.draw.line(surface, acc, (x, ty), (x + 20, ty), 2)
-            lbl = font.render(f"{val:4.0f}", True, acc)
-            surface.blit(lbl, (x + 22, ty - lbl.get_height() // 2))
+            pygame.draw.line(surface, acc, (x, ty), (x + tick_major, ty), 2)
+            lbl = font.render(f"{val:.0f}", True, acc)
+            surface.blit(lbl, (x + tick_major + 1, ty - lbl.get_height() // 2))
         elif val % MINOR_INTERVAL == 0:
-            pygame.draw.line(surface, colors.GREY,
-                             (x, ty), (x + 10, ty), 1)
+            pygame.draw.line(
+                surface, colors.GREY, (x, ty), (x + tick_minor, ty), 1,
+            )
 
-    # Current value box (accent border + accent digits)
-    box_h = 24
+    box_h = 20
     box_w = w - 4
     box_rect = pygame.Rect(x + 2, cy - box_h // 2, box_w, box_h)
     pygame.draw.rect(surface, colors.BLACK, box_rect)
     pygame.draw.rect(surface, acc, box_rect, 2)
 
-    alt_text = font.render(f"{altitude:6.1f}", True, acc)
-    surface.blit(alt_text, (box_rect.x + 4,
-                            box_rect.centery - alt_text.get_height() // 2))
+    alt_text = font.render(str(int(round(altitude))), True, acc)
+    surface.blit(
+        alt_text,
+        (box_rect.x + 3, box_rect.centery - alt_text.get_height() // 2),
+    )
 
     surface.set_clip(clip_prev)

@@ -17,8 +17,9 @@ from hud.fonts import get_font
 STATUS_BAR_H = 28
 BOTTOM_BAR_H = 28
 COMPASS_BAR_H = 34
-TAPE_WIDTH_FRAC = 0.12   # speed tape width
-ALT_TAPE_WIDTH_FRAC = 0.10  # each altitude tape
+# Tuned for 800x480 class displays (~7"); half-width tapes vs original layout
+TAPE_WIDTH_FRAC = 0.06   # speed tape
+ALT_TAPE_WIDTH_FRAC = 0.0575  # each altitude tape (~15% wider than 0.05)
 
 
 M_TO_FT = 3.28084

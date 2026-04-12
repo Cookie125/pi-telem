@@ -35,8 +35,8 @@ def _fmt_dist(metres):
 def draw(surface: pygame.Surface, rect: pygame.Rect, state):
     """Draw HOME distance and bearing in the left strip (width ``rect``); clipped to divider."""
     x, y, w, h = rect.x, rect.y, rect.width, rect.height
-    font = get_font(12)
-    pad = min(8, max(4, w // 12))
+    font = get_font(10)
+    pad = min(6, max(2, w // 14))
 
     clip_prev = surface.get_clip()
     surface.set_clip(rect)
