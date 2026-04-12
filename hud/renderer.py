@@ -103,9 +103,25 @@ class HUDRenderer:
             )
             terrain_surf = self._terrain_renderer.get_surface()
 
+        home_xy = None
+        if (
+            self._terrain_sampler is not None
+            and self._terrain_renderer is not None
+            and terrain_surf is not None
+        ):
+            from hud.terrain import home_marker_work_coords
+
+            home_xy = home_marker_work_coords(s, diag, s.pitch)
+
         # Horizon first (background for center area)
-        horizon.draw(self.screen, self.horizon_rect, s.roll, s.pitch,
-                     terrain_surface=terrain_surf)
+        horizon.draw(
+            self.screen,
+            self.horizon_rect,
+            s.roll,
+            s.pitch,
+            terrain_surface=terrain_surf,
+            home_marker_xy=home_xy,
+        )
 
         # Tapes overlay on sides
         speed_tape.draw(self.screen, self.speed_rect, s.airspeed, s.groundspeed)

@@ -9,6 +9,14 @@ from hud.fonts import get_font
 PPD = 4.0
 
 
+def _draw_home_marker_3d(work: pygame.Surface, x: int, y: int) -> None:
+    """HOME projected into SVS: large bold white ``H`` centered on the projected point."""
+    font = get_font(32, bold=True)
+    glyph = font.render("H", True, colors.WHITE)
+    rect = glyph.get_rect(center=(x, y))
+    work.blit(glyph, rect)
+
+
 def work_surface_diag(w: int, h: int) -> int:
     """Side length of the square work surface drawn before roll rotation.
 
@@ -20,13 +28,15 @@ def work_surface_diag(w: int, h: int) -> int:
 
 
 def draw(surface: pygame.Surface, rect: pygame.Rect, roll: float, pitch: float,
-         terrain_surface: pygame.Surface = None):
+         terrain_surface: pygame.Surface = None, home_marker_xy=None):
     """Draw artificial horizon with pitch ladder and roll indicator.
 
     roll / pitch are in radians (from ATTITUDE message).
     terrain_surface: optional pre-rendered SVS surface.  Should be
                      (work_surface_diag(w,h), work_surface_diag(w,h)) so it covers
                      the full prerotation square; horizon aligns it with pitch.
+    home_marker_xy: optional ``(x, y)`` in work pixels for HOME (see
+                    ``terrain.home_marker_work_coords``), drawn when SVS is active.
     """
     cx, cy = rect.centerx, rect.centery
     w, h = rect.width, rect.height
@@ -44,13 +54,12 @@ def draw(surface: pygame.Surface, rect: pygame.Rect, roll: float, pitch: float,
     work.fill(colors.SKY)
 
     if terrain_surface is not None:
-        # Below-horizon base before blitting SRCALPHA terrain.  Use the same brown
-        # as flat ground — not deep green.  Terrain polygons are ~78–96% opaque, so
-        # a green underpaint bleeds through at the sides and bottom and reads as
-        # solid artificial green; mavproxy uses a tan/brown fallback instead.
+        # Below-horizon base before blitting terrain (opaque RGB).  Use the same brown
+        # as flat ground — not deep green.  Sky-only pixels in the texture are the
+        # same SKY color as the fill above split_y; a green underpaint would show at
+        # sides/bottom as solid artificial green; mavproxy uses tan/brown instead.
         pygame.draw.rect(work, colors.GROUND, (0, split_y, diag, diag - split_y))
         # Full-size (diag x diag) terrain covers the entire work square edge-to-edge.
-        # Older (w x h) centered blit left side margins with no SVS under roll.
         ts_w, ts_h = terrain_surface.get_size()
         if ts_w == diag and ts_h == diag:
             work.blit(terrain_surface, (0, int(pitch_px)))
@@ -59,6 +68,12 @@ def draw(surface: pygame.Surface, rect: pygame.Rect, roll: float, pitch: float,
             ts_x = wcx - ts_rect.width // 2
             ts_y = wcy - ts_rect.height // 2 + int(pitch_px)
             work.blit(terrain_surface, (ts_x, ts_y))
+
+        if home_marker_xy is not None:
+            mx, my = home_marker_xy
+            ix, iy = int(round(mx)), int(round(my))
+            if -40 <= ix < diag + 40 and -40 <= iy < diag + 40:
+                _draw_home_marker_3d(work, ix, iy)
     else:
         pygame.draw.rect(work, colors.GROUND, (0, split_y, diag, diag - split_y))
 

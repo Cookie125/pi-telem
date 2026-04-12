@@ -11,10 +11,13 @@ import os
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import pygame
+
+from hud import colors
+from hud.home_info import _bearing, _haversine
 
 # Add project root to sys.path so lib/ can be found as a package
 _PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -317,6 +320,47 @@ class TerrainSampler(threading.Thread):
 _PPD = 4.0                           # pixels per degree (from horizon.py)
 _PPR = _PPD * 180.0 / math.pi       # pixels per radian
 
+# Opaque brown outlines between range-band steps (alpha contours caused blue bleed on blit).
+_CONTOUR_INNER_RGB = (35, 30, 26)
+_CONTOUR_SKYLINE_RGB = (24, 21, 18)
+
+
+def home_marker_work_coords(state, diag: int, pitch_rad: float) -> Optional[Tuple[float, float]]:
+    """Project HOME into the SVS work square (same FOV/PPD as terrain), before roll.
+
+    Uses horizontal ground distance and MSL height difference (HOME_POSITION altitude
+    vs aircraft MSL), matching the geometry used for terrain angles.
+
+    Returns ``(x, y)`` in work-surface pixels, or None if home is outside the
+    horizontal FOV or position is unusable.
+    """
+    if not state.home_set:
+        return None
+    lat, lon = state.lat, state.lon
+    if _is_zero_lat_lon(lat, lon) and not _is_zero_lat_lon(state.home_lat, state.home_lon):
+        lat, lon = state.home_lat, state.home_lon
+    if _is_zero_lat_lon(lat, lon):
+        return None
+
+    dist = _haversine(lat, lon, state.home_lat, state.home_lon)
+    if dist < 0.5:
+        return None
+
+    brg = _bearing(lat, lon, state.home_lat, state.home_lon)
+    hdg = state.heading % 360.0
+    rel_az = (brg - hdg + 540.0) % 360.0 - 180.0
+    if abs(rel_az) > FOV_DEG * 0.5:
+        return None
+
+    dz = state.home_alt - state.altitude_msl
+    elev_rad = math.atan2(dz, dist)
+
+    pitch_px = math.degrees(pitch_rad) * _PPD
+    wcy = diag * 0.5
+    x = (rel_az + FOV_DEG * 0.5) / FOV_DEG * float(diag - 1)
+    y = wcy + pitch_px - math.degrees(elev_rad) * _PPD
+    return (x, y)
+
 
 def _terrain_color_for_elevation(max_angle_deg: float, dist_factor: float):
     """Return (R, G, B) 0-255 for a band given its max elevation angle and distance.
@@ -347,8 +391,9 @@ class TerrainRenderer:
 
     Each range band is a polygon whose top edge follows the per-ray elevation
     profile (mountain silhouette) and whose bottom edge is the previous band's
-    top edge.  Bands are drawn far-to-near with increasing alpha, producing a
-    stacked depth effect with visible contour edges between layers.
+    top edge.  Bands are drawn far-to-near; depth is from RGB darkening with
+    distance, not from semi-transparent fills (which would mix sky blue into
+    far terrain).
     """
 
     def __init__(self):
@@ -374,8 +419,10 @@ class TerrainRenderer:
         if W <= 0 or H <= 0:
             return
 
-        # SRCALPHA surface: sky pixels stay (0,0,0,0) = fully transparent
-        surf = pygame.Surface((W, H), pygame.SRCALPHA)
+        # Plain RGB surface (no per-pixel alpha). SRCALPHA + any translucent stroke
+        # left pixels that blended with the HUD sky on blit → blue bleed at range.
+        surf = pygame.Surface((W, H))
+        surf.fill(colors.SKY)
 
         horizon_row = H / 2.0
 
@@ -420,10 +467,6 @@ class TerrainRenderer:
             max_ang = float(np.degrees(np.max(interp_angles[:, b])))
             color_rgb = _terrain_color_for_elevation(max_ang, dist_factor)
 
-            # Per-band alpha: far = more transparent, near = more opaque
-            alpha = int((0.78 + 0.18 * dist_factor) * 255)
-            color_rgba = (*color_rgb, alpha)
-
             # Build polygon: bottom edge L->R, then top edge R->L
             bottom_pts = list(zip(xs_sub.tolist(), y_bot.tolist()))
             top_pts = list(zip(xs_sub[::-1].tolist(), y_top[::-1].tolist()))
@@ -437,10 +480,25 @@ class TerrainRenderer:
                 + [(-1, int(y_top[0]))]
             )
 
-            pygame.draw.polygon(surf, color_rgba, verts)
+            pygame.draw.polygon(surf, color_rgb, verts)
 
             # This band's top becomes the next band's bottom
             y_prev_full = y_top_full.copy()
+
+        # Contour lines on each band's top edge: separates distance colors and
+        # sharpens the outer skyline against the sky (drawn after all fills).
+        for b in range(n_bands):
+            y_top = band_rows[sample_idx, b]
+            pts = list(zip(xs_sub.tolist(), y_top.tolist()))
+            if len(pts) < 2:
+                continue
+            # lines not aalines: anti-aliasing fringes blend with terrain and muddy the color.
+            oc = (
+                _CONTOUR_SKYLINE_RGB
+                if b == n_bands - 1
+                else _CONTOUR_INNER_RGB
+            )
+            pygame.draw.lines(surf, oc, False, pts, width=1)
 
         self._cached_surface = surf
 
