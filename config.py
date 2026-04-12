@@ -1,4 +1,5 @@
 import argparse
+from argparse import BooleanOptionalAction
 
 # Tried in order when --connection is omitted (Pi: UDP + common USB / UART devices).
 DEFAULT_CONNECTIONS = (
@@ -40,12 +41,11 @@ connection string examples:
         help="Serial baud rate, ignored for network connections (default: 115200)",
     )
     p.add_argument(
-        "--rx-only",
+        "--tx",
         action="store_true",
         help=(
-            "Receive-only: do not transmit MAVLink (no data-stream requests, "
-            "HOME_POSITION pull, or mission download). For listen-only serial "
-            "(e.g. Pi RX tied to radio TX without a return wire)."
+            "Allow MAVLink uplink (stream requests, HOME pull, mission download). "
+            "Default is receive-only (no transmit)."
         ),
     )
     p.add_argument(
@@ -72,8 +72,12 @@ connection string examples:
     )
     p.add_argument(
         "--terrain",
-        action="store_true",
-        help="Enable SVS terrain rendering on the artificial horizon",
+        action=BooleanOptionalAction,
+        default=True,
+        help=(
+            "SVS terrain on the artificial horizon. Default: on; use --no-terrain "
+            "to disable (lighter CPU / no DEM fetch)."
+        ),
     )
     p.add_argument(
         "--terrain-db",
@@ -83,8 +87,12 @@ connection string examples:
     )
     p.add_argument(
         "--map",
-        action="store_true",
-        help="Enable PIP map (satellite tiles + HOME / ownship; uses ~/.cache/pi-telem/map_tiles)",
+        action=BooleanOptionalAction,
+        default=True,
+        help=(
+            "PIP map (satellite tiles + HOME / ownship; ~/.cache/pi-telem/map_tiles). "
+            "Default: on; use --no-map to disable."
+        ),
     )
     p.add_argument(
         "--map-zoom",
@@ -109,6 +117,8 @@ connection string examples:
     )
 
     args = p.parse_args()
+
+    args.rx_only = not args.tx
 
     if not args.connections:
         args.connections = list(DEFAULT_CONNECTIONS)
