@@ -181,10 +181,10 @@ The generated unit targets **Raspberry Pi OS with desktop** and a graphical logi
 | **`User=`** *your login user* | Runs the HUD as the same user that owns the X session (see below). |
 | **`Environment=DISPLAY=:0`** | Draw on the usual X11 display (adjust if your `DISPLAY` is not `:0`). |
 | **`Environment=XAUTHORITY=/home/<user>/.Xauthority`** | Lets SDL/pygame authenticate to the X server (path matches the user passed to **`User=`**). |
+| **`Environment=XDG_RUNTIME_DIR=/run/user/<uid>`** | User runtime dir (set from **`id -u`** at install time). Avoids **`XDG_RUNTIME_DIR is invalid or not set`** for fontconfig / SDL when the app is not launched from a desktop session. |
 | **`WorkingDirectory=`** *repo path* | Ensures imports and relative paths behave. |
 | **`ExecStart=.../main.py --baud 115200 --map --terrain`** | Default flags; **no `-c`** so the [connection list](#connection-strings) default applies. |
 | **`Restart=always`** / **`RestartSec=5`** | Retry if X11 was not ready yet (e.g. **`.Xauthority`** missing before autologin finishes). |
-| **`StartLimitIntervalSec=0`** | Avoid systemd giving up after repeated start failures during boot. |
 
 **Do not** set **`SDL_VIDEODRIVER=kmsdrm`** in the unit: the desktop session owns the display.
 
@@ -240,7 +240,9 @@ sudo systemctl restart pitelem
 
 - Confirm **`echo $DISPLAY`** on the Pi desktop (often **`:0`**); change the unit if yours differs.  
 - Enable **autologin** or log in once after boot so **`~/.Xauthority`** exists; **`Restart=always`** retries until the HUD can connect to X11.  
-- **`journalctl -u pitelem -e`** for Python/SDL errors (permissions, missing display).
+- **`journalctl -u pitelem -e`** for Python/SDL errors (permissions, missing display).  
+- If you see **`XDG_RUNTIME_DIR is invalid or not set`**, re-run **`./install.sh`** (the unit sets **`XDG_RUNTIME_DIR=/run/user/<uid>`**). That path is created when you log in; **`Restart=always`** usually clears the error after **`/run/user/<uid>`** exists.  
+- A one-time **`fc-list` timed out** warning from pygame/fontconfig on slow SD cards is usually harmless.
 
 ### If terrain works locally but not on the Pi
 
