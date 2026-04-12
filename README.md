@@ -71,6 +71,7 @@ The `--connection` flag accepts any `pymavlink` connection string:
 |--------|-------------|
 | `-c`, `--connection` | MAVLink connection string (default: `/dev/ttyUSB0`) |
 | `-b`, `--baud` | Serial baud rate, ignored for UDP/TCP (default: `115200`) |
+| `--rx-only` | **Receive-only:** do not send MAVLink (no stream requests, `HOME_POSITION` pull, or mission download). For a **listen-only** UART (e.g. RFD TX → Pi RX with no Pi TX → RFD RX). HUD works from whatever the vehicle already broadcasts; map **waypoints/route** need mission data from another path or FC broadcast |
 | `-r`, `--resolution` | Display size `WxH` (default: `800x480`) |
 | `--fps` | Target render frame rate (default: `10`) |
 | `--alt-unit` | Altitude tapes: `m` or `ft` (default: `m`) |
@@ -86,6 +87,7 @@ Equivalent short help:
 ```
 -c, --connection   MAVLink connection string
 -b, --baud           Serial baud rate (default: 115200)
+    --rx-only         Do not transmit MAVLink (listen-only link)
 -r, --resolution     WxH (default: 800x480)
     --fps             Target frame rate (default: 10)
     --alt-unit        m or ft (default: m)

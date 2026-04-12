@@ -25,6 +25,15 @@ connection string examples:
         help="Serial baud rate, ignored for network connections (default: 115200)",
     )
     p.add_argument(
+        "--rx-only",
+        action="store_true",
+        help=(
+            "Receive-only: do not transmit MAVLink (no data-stream requests, "
+            "HOME_POSITION pull, or mission download). For listen-only serial "
+            "(e.g. Pi RX tied to radio TX without a return wire)."
+        ),
+    )
+    p.add_argument(
         "-r", "--resolution",
         default="800x480",
         help="Display resolution WxH (default: 800x480)",

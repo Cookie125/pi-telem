@@ -26,11 +26,12 @@ def _latlon_from_mission_item(msg) -> Optional[tuple]:
 class MavlinkReader(threading.Thread):
     """Background thread that reads MAVLink and updates TelemetryState."""
 
-    def __init__(self, connection_string, baud, state):
+    def __init__(self, connection_string, baud, state, rx_only: bool = False):
         super().__init__(daemon=True)
         self.connection_string = connection_string
         self.baud = baud
         self.state = state
+        self._rx_only = rx_only
         self._stop_event = threading.Event()
         self._conn = None
         # Mission download (MISSION_REQUEST_LIST / ITEM_INT)
@@ -68,8 +69,11 @@ class MavlinkReader(threading.Thread):
         print(f"[mavlink_reader] heartbeat from system {self._conn.target_system} "
               f"component {self._conn.target_component}")
         self.state.update(lambda s: setattr(s, "connected", True))
-        self._request_streams()
-        self._mission_pull_t = time.monotonic() - 30.0  # mission download soon after connect
+        if self._rx_only:
+            print("[mavlink_reader] rx-only: not sending stream/home/mission requests")
+        else:
+            self._request_streams()
+            self._mission_pull_t = time.monotonic() - 30.0  # mission download soon after connect
 
     def _request_streams(self):
         """Ask the vehicle to send us the data streams we care about."""
@@ -95,6 +99,8 @@ class MavlinkReader(threading.Thread):
 
     def _request_home(self):
         """Ask the vehicle to send HOME_POSITION."""
+        if self._rx_only:
+            return
         self._conn.mav.command_long_send(
             self._conn.target_system,
             self._conn.target_component,
@@ -113,13 +119,14 @@ class MavlinkReader(threading.Thread):
                 self._mis_busy = False
                 self._mis_n = None
                 self._mis_buf = {}
-            if now - self._mission_pull_t >= 25.0:
-                self._mission_pull_t = now
-                self._start_mission_download()
+            if not self._rx_only:
+                if now - self._mission_pull_t >= 25.0:
+                    self._mission_pull_t = now
+                    self._start_mission_download()
 
-            if now - last_home_request >= 5.0:
-                self._request_home()
-                last_home_request = now
+                if now - last_home_request >= 5.0:
+                    self._request_home()
+                    last_home_request = now
 
             msg = self._conn.recv_match(blocking=True, timeout=1)
             if msg is None:
@@ -243,7 +250,7 @@ class MavlinkReader(threading.Thread):
         self.state.update(_up)
 
     def _start_mission_download(self) -> None:
-        if self._conn is None or self._mis_busy:
+        if self._rx_only or self._conn is None or self._mis_busy:
             return
         self._mis_busy = True
         self._mis_n = None
@@ -259,7 +266,7 @@ class MavlinkReader(threading.Thread):
             self._mis_busy = False
 
     def _request_mission_seq(self, seq: int) -> None:
-        if self._conn is None:
+        if self._rx_only or self._conn is None:
             return
         try:
             self._conn.mav.mission_request_int_send(
@@ -301,6 +308,8 @@ class MavlinkReader(threading.Thread):
         self._mis_buf = {}
 
     def _handle_mission_count(self, msg):
+        if self._rx_only:
+            return
         if msg.mission_type != mavutil.mavlink.MAV_MISSION_TYPE_MISSION:
             return
         if not self._mis_busy:

@@ -30,7 +30,9 @@ def main():
     pygame.mouse.set_visible(False)
 
     state = TelemetryState()
-    reader = MavlinkReader(args.connection, args.baud, state)
+    reader = MavlinkReader(
+        args.connection, args.baud, state, rx_only=args.rx_only
+    )
     reader.start()
 
     terrain_sampler = None
