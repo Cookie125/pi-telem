@@ -176,12 +176,15 @@ The generated unit targets **Raspberry Pi OS with desktop** and a graphical logi
 | Unit setting | Purpose |
 |----------------|--------|
 | **`WantedBy=multi-user.target`** | Hook into the normal boot target so the unit actually starts on every boot (unlike relying only on **`graphical.target`**, which may not pull in services if the default target differs). |
-| **`After=display-manager.service`** | Start **after the display manager** so an X server is available. |
+| **`After=display-manager.service systemd-user-sessions.service`** | Start after the display manager **and** user session / logind (helps with **`/run/user/<uid>`**). |
 | **`Wants=display-manager.service`** | Pull in the display manager if needed. |
+| **`ExecStartPre=…bash…`** | Waits (up to **90 s**) for **`/tmp/.X11-unix/X0`**, **`~/.Xauthority`**, and **`/run/user/<uid>`** so the HUD does not start before **autologin / X11** is ready (fixes “blank screen until **`systemctl restart pitelem`**”). |
+| **`TimeoutStartSec=120`** | Allows the wait loop plus Python startup before systemd times out. |
 | **`User=`** *your login user* | Runs the HUD as the same user that owns the X session (see below). |
 | **`Environment=DISPLAY=:0`** | Draw on the usual X11 display (adjust if your `DISPLAY` is not `:0`). |
 | **`Environment=XAUTHORITY=/home/<user>/.Xauthority`** | Lets SDL/pygame authenticate to the X server (path matches the user passed to **`User=`**). |
 | **`Environment=XDG_RUNTIME_DIR=/run/user/<uid>`** | User runtime dir (set from **`id -u`** at install time). Avoids **`XDG_RUNTIME_DIR is invalid or not set`** for fontconfig / SDL when the app is not launched from a desktop session. |
+| **`Environment=PYTHONUNBUFFERED=1`** | Unbuffered stdout/stderr so **`print`** and Python logs show up in **`journalctl`** immediately (otherwise output can be held until the buffer fills). |
 | **`WorkingDirectory=`** *repo path* | Ensures imports and relative paths behave. |
 | **`ExecStart=.../main.py --baud 115200 --map --terrain`** | Default flags; **no `-c`** so the [connection list](#connection-strings) default applies. |
 | **`Restart=always`** / **`RestartSec=5`** | Retry if X11 was not ready yet (e.g. **`.Xauthority`** missing before autologin finishes). |
@@ -234,10 +237,12 @@ sudo systemctl restart pitelem
 - **`systemctl is-enabled pitelem`** should print **`enabled`**. If not: **`sudo systemctl enable pitelem`**.  
 - **`systemctl status pitelem`** — look for **failed** / **inactive** and the last log lines.  
 - Re-run **`./install.sh`** after pulling a newer unit, then **`sudo systemctl daemon-reload && sudo systemctl enable pitelem && sudo systemctl restart pitelem`**.  
-- **`journalctl -b -u pitelem`** — errors opening the display, missing **`.Xauthority`**, or Python tracebacks.
+- **`journalctl -b -u pitelem`** — errors opening the display, missing **`.Xauthority`**, or Python tracebacks.  
+- If the journal only shows **`Started pitelem.service`** and no Python lines, ensure the unit sets **`PYTHONUNBUFFERED=1`** (current **`install.sh`** does); then **`sudo systemctl daemon-reload && sudo systemctl restart pitelem`**.
 
 ### If the window does not appear (desktop)
 
+- **HUD only after `sudo systemctl restart pitelem`:** at cold boot the service used to start **before** X11 and your **`.Xauthority`** existed. The installed unit **waits** for the X socket and cookies (see **`ExecStartPre`** in the table above). Re-run **`./install.sh`** to refresh the unit, then **`daemon-reload`** + **`restart`**.  
 - Confirm **`echo $DISPLAY`** on the Pi desktop (often **`:0`**); change the unit if yours differs.  
 - Enable **autologin** or log in once after boot so **`~/.Xauthority`** exists; **`Restart=always`** retries until the HUD can connect to X11.  
 - **`journalctl -u pitelem -e`** for Python/SDL errors (permissions, missing display).  
