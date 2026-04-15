@@ -20,7 +20,8 @@ sudo apt-get install -y -qq \
 echo "[2/5] Configuring serial port access..."
 sudo usermod -aG dialout "$USER" 2>/dev/null || true
 sudo tee /etc/udev/rules.d/99-serial.rules > /dev/null <<'UDEV'
-KERNEL=="ttyAMA0|ttyS0", MODE="0666"
+KERNEL=="ttyAMA0", MODE="0666"
+KERNEL=="ttyS0", MODE="0666"
 UDEV
 sudo udevadm control --reload-rules
 sudo udevadm trigger
@@ -43,6 +44,7 @@ Wants=display-manager.service
 [Service]
 Type=simple
 User=$USER
+SupplementaryGroups=dialout
 WorkingDirectory=$SCRIPT_DIR
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/${USER}/.Xauthority
