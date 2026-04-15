@@ -1,6 +1,6 @@
 # pi-telem
 
-MAVLink telemetry HUD for Raspberry Pi Zero 2 W. Reads telemetry from an RFD900 radio (via FTDI/serial) or from an ArduPilot SITL instance over the network, and renders a Yaapu-style heads-up display with an artificial horizon to an HDMI screen using pygame.
+MAVLink telemetry HUD for Raspberry Pi Zero 2 W. Reads telemetry from an RFD900x radio via the Pi's GPIO UART (or from an ArduPilot SITL instance over the network) and renders a Yaapu-style heads-up display with an artificial horizon to an HDMI screen using pygame.
 
 **Repository:** [github.com/Cookie125/pi-telem](https://github.com/Cookie125/pi-telem) (default branch: `main`)
 
@@ -31,9 +31,9 @@ git checkout main
 # request streams/mission; add --no-terrain / --no-map to lighten dev runs.
 .venv/bin/python main.py -c udpin:127.0.0.1:14550 --windowed --tx
 
-# On the Pi: no -c uses UDP :14550 then USB serial (see "Connection strings").
+# On the Pi: the service uses -c /dev/serial0 (GPIO UART) by default.
 # Map and terrain are on by default; MAVLink is receive-only unless you add --tx.
-.venv/bin/python main.py --baud 115200
+.venv/bin/python main.py -c /dev/serial0 --baud 115200
 
 # Only a specific serial device
 .venv/bin/python main.py -c /dev/ttyUSB0 --baud 115200
@@ -165,9 +165,9 @@ Install project dependencies in that env first (`pip install -r requirements.txt
 ### What `install.sh` does
 
 1. Installs system packages (Python, SDL2 dev libs, fonts).  
-2. Adds your user to the **`dialout`** group (serial ports). Log out and back in (or reboot) for that to apply.  
-3. Creates **`.venv`** and installs **`requirements.txt`**.  
-4. Writes **`/etc/systemd/system/pitelem.service`** and runs **`systemctl enable pitelem`** (it does **not** start the service). After updating the unit file, run **`sudo systemctl daemon-reload && sudo systemctl enable pitelem`** (or re-run **`./install.sh`**) so systemd picks up changes.
+2. Adds your user to the **`dialout`** group and installs a **udev rule** (`/etc/udev/rules.d/99-serial.rules`) that grants read/write access to the Pi GPIO UART (`ttyAMA0` / `ttyS0`). The udev rule takes effect immediately — no logout or reboot required.  
+3. Creates **`.venv`** and installs **`requirements.txt`** (includes **`pyserial`** for GPIO UART access).  
+4. Writes **`/etc/systemd/system/pitelem.service`** with **`SupplementaryGroups=dialout`** (ensures serial access even before the user's session picks up the group) and runs **`systemctl enable pitelem`** (it does **not** start the service). After updating the unit file, run **`sudo systemctl daemon-reload && sudo systemctl enable pitelem`** (or re-run **`./install.sh`**) so systemd picks up changes.
 
 ### Raspberry Pi OS with desktop
 
@@ -181,12 +181,13 @@ The generated unit targets **Raspberry Pi OS with desktop** and a graphical logi
 | **`ExecStartPre=…bash…`** | Waits (up to **90 s**) for **`/tmp/.X11-unix/X0`**, **`~/.Xauthority`**, and **`/run/user/<uid>`** so the HUD does not start before **autologin / X11** is ready (fixes “blank screen until **`systemctl restart pitelem`**”). |
 | **`TimeoutStartSec=120`** | Allows the wait loop plus Python startup before systemd times out. |
 | **`User=`** *your login user* | Runs the HUD as the same user that owns the X session (see below). |
+| **`SupplementaryGroups=dialout`** | Grants the service serial port access without requiring a logout/reboot after group membership changes. |
 | **`Environment=DISPLAY=:0`** | Draw on the usual X11 display (adjust if your `DISPLAY` is not `:0`). |
 | **`Environment=XAUTHORITY=/home/<user>/.Xauthority`** | Lets SDL/pygame authenticate to the X server (path matches the user passed to **`User=`**). |
 | **`Environment=XDG_RUNTIME_DIR=/run/user/<uid>`** | User runtime dir (set from **`id -u`** at install time). Avoids **`XDG_RUNTIME_DIR is invalid or not set`** for fontconfig / SDL when the app is not launched from a desktop session. |
 | **`Environment=PYTHONUNBUFFERED=1`** | Unbuffered stdout/stderr so **`print`** and Python logs show up in **`journalctl`** immediately (otherwise output can be held until the buffer fills). |
 | **`WorkingDirectory=`** *repo path* | Ensures imports and relative paths behave. |
-| **`ExecStart=.../main.py --baud 115200 --map --terrain`** | Default flags; **no `-c`** so the [connection list](#connection-strings) default applies. |
+| **`ExecStart=.../main.py -c /dev/serial0 --baud 115200 --map --terrain`** | Default flags; uses the Pi GPIO UART directly for receive-only MAVLink. |
 | **`Restart=always`** / **`RestartSec=5`** | Retry if X11 was not ready yet (e.g. **`.Xauthority`** missing before autologin finishes). |
 
 **Do not** set **`SDL_VIDEODRIVER=kmsdrm`** in the unit: the desktop session owns the display.
@@ -201,7 +202,7 @@ sudo systemctl status pitelem      # check status
 journalctl -u pitelem -f           # tail logs
 ```
 
-**MAVLink** is **receive-only** unless you add **`--tx`** to **`ExecStart`**. The process **keeps trying** the default [connection list](#connection-strings) if nothing is plugged in yet.
+**MAVLink** is **receive-only** unless you add **`--tx`** to **`ExecStart`**. The service uses **`-c /dev/serial0`** by default (Pi GPIO UART). If the serial device is not available yet at boot, the process retries in a loop until it connects.
 
 ### Changing flags or connections
 
@@ -214,15 +215,23 @@ sudo systemctl edit pitelem
 ```ini
 [Service]
 ExecStart=
-ExecStart=/home/pi/pi-telem/.venv/bin/python /home/pi/pi-telem/main.py --baud 115200 --map --terrain --tx
+ExecStart=/home/pi/pi-telem/.venv/bin/python /home/pi/pi-telem/main.py -c /dev/serial0 --baud 115200 --map --terrain --tx
 ```
 
-**Only** a fixed serial device (no UDP in the rotation):
+**USB-serial instead of GPIO UART** (e.g. FTDI dongle):
 
 ```ini
 [Service]
 ExecStart=
 ExecStart=/home/pi/pi-telem/.venv/bin/python /home/pi/pi-telem/main.py -c /dev/ttyUSB0 --baud 115200 --map --terrain
+```
+
+**UDP for SITL or network forwarding**:
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/home/pi/pi-telem/.venv/bin/python /home/pi/pi-telem/main.py -c udpin:0.0.0.0:14550 --map --terrain --tx
 ```
 
 Then:
@@ -261,13 +270,27 @@ sudo systemctl restart pitelem
 ## Hardware Setup
 
 - **Pi Zero 2 W** (or similar) running **Raspberry Pi OS with desktop** (what **`install.sh`** targets)
-- **RFD900** radio modem connected via **FTDI USB-to-serial** adapter
+- **RFD900x** radio modem — the Pi taps the RFD's serial **TX** line via the GPIO UART (receive-only by default)
 - Any **HDMI display** (mini-HDMI adapter required for the Pi Zero 2 W)
+
+### Wiring (RFD900x → Pi GPIO UART tap)
+
+The Pi passively listens to telemetry on the RFD900x TX line. The existing connection (e.g. FTDI cable to a GCS laptop) stays in place — you splice the TX signal so the Pi reads in parallel.
+
+| RFD900x Pin | Function       | Pi Physical Pin | Pi Function       |
+|-------------|----------------|-----------------|-------------------|
+| **9 (TX)**  | UART Data Out  | **10**          | GPIO 15 / UART RX |
+| **1 or 2 (GND)** | Ground   | **6** (or 9, 14, 20, 25) | Ground |
+
+- **Voltage**: RFD900x serial pins are 3.3 V TTL, same as Pi GPIO — no level shifter needed.
+- **Enable UART on the Pi**: `sudo raspi-config` → Interface Options → Serial Port → disable login shell, enable serial hardware. Or add `enable_uart=1` to `/boot/config.txt`. The device appears as `/dev/serial0`.
+- **Baud rate**: must match the RFD900x serial rate (default in this project: **115200**). Verify with your RFD configuration tool.
+- **`--tx` stays off** (the default) since you are tapping a shared line — the Pi should not transmit.
 
 ## Dependencies
 
 - Python 3
-- **pygame** (SDL2), **pymavlink**, **numpy** (terrain)
+- **pygame** (SDL2), **pymavlink**, **pyserial**, **numpy** (terrain)
 - Vendored terrain code under **`lib/`** (SRTM/Copernicus tile access)
 - System packages (via `install.sh`): `libsdl2-dev`, `libsdl2-image-dev`, `libsdl2-ttf-dev`, `fonts-dejavu-core`, etc.
 
