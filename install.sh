@@ -46,7 +46,7 @@ Environment=PYTHONUNBUFFERED=1
 # Boot race: display-manager is up before login/autologin creates X socket + cookies.
 ExecStartPre=/bin/bash -c 'for i in \$(seq 1 90); do [ -S /tmp/.X11-unix/X0 ] && [ -f /home/${USER}/.Xauthority ] && [ -d /run/user/${USER_UID} ] && exit 0; sleep 1; done; exit 1'
 TimeoutStartSec=120
-ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py --baud 115200 --map --terrain
+ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py -c /dev/serial0 --baud 115200 --map --terrain
 Restart=always
 RestartSec=5
 
