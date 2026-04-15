@@ -17,8 +17,13 @@ sudo apt-get install -y -qq \
     fonts-dejavu-core
 
 # ---- serial access ----
-echo "[2/5] Adding $USER to dialout group..."
+echo "[2/5] Configuring serial port access..."
 sudo usermod -aG dialout "$USER" 2>/dev/null || true
+sudo tee /etc/udev/rules.d/99-serial.rules > /dev/null <<'UDEV'
+KERNEL=="ttyAMA0|ttyS0", MODE="0666"
+UDEV
+sudo udevadm control --reload-rules
+sudo udevadm trigger
 
 # ---- python venv ----
 echo "[3/5] Creating Python venv and installing packages..."
