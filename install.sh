@@ -50,10 +50,10 @@ Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/${USER}/.Xauthority
 Environment=XDG_RUNTIME_DIR=/run/user/${USER_UID}
 Environment=PYTHONUNBUFFERED=1
-# Boot race: display-manager is up before login/autologin creates X socket + cookies.
-ExecStartPre=/bin/bash -c 'for i in \$(seq 1 90); do [ -S /tmp/.X11-unix/X0 ] && [ -f /home/${USER}/.Xauthority ] && [ -d /run/user/${USER_UID} ] && exit 0; sleep 1; done; exit 1'
-# Ensure serial port is accessible (runs as root via '+' prefix); wait up to 30s for device to appear.
-ExecStartPre=+/bin/bash -c 'for i in \$(seq 1 30); do [ -e /dev/serial0 ] && /bin/chmod 666 /dev/serial0 && exit 0; sleep 1; done; echo "serial0 not found"; exit 1'
+# Boot race: wait for X11, then wait for serial device and set permissions.
+# Runs as root ('+' prefix) so chmod works. Combined into one command to
+# minimise the gap between chmod and ExecStart (avoids udev resetting perms).
+ExecStartPre=+/bin/bash -c 'for i in \$(seq 1 90); do [ -S /tmp/.X11-unix/X0 ] && [ -f /home/${USER}/.Xauthority ] && [ -d /run/user/${USER_UID} ] && break; sleep 1; done; for i in \$(seq 1 30); do [ -e /dev/serial0 ] && break; sleep 1; done; /bin/chmod 666 /dev/serial0 2>/dev/null; t=\$(/bin/readlink -f /dev/serial0 2>/dev/null) && /bin/chmod 666 "\$t" 2>/dev/null; exit 0'
 TimeoutStartSec=120
 ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py -c /dev/serial0 --baud 115200 --map --terrain
 Restart=always

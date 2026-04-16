@@ -24,6 +24,24 @@ def _latlon_from_mission_item(msg) -> Optional[tuple]:
     return lat, lon
 
 
+# Fallback vehicle types for mode resolution when the reported MAV_TYPE has
+# no mode mapping in pymavlink (common with VTOL types 22-28).
+_MODE_FALLBACK_TYPES = (1, 2, 10)  # Plane, Copter, Rover
+
+
+def _resolve_mode(msg) -> str:
+    """Resolve flight mode string, with fallback for unmapped vehicle types."""
+    mode = mavutil.mode_string_v10(msg)
+    if not mode.startswith("Mode("):
+        return mode
+    # Vehicle type has no mode mapping; try common ArduPilot fallbacks.
+    for fallback_type in _MODE_FALLBACK_TYPES:
+        mode_map = mavutil.mode_mapping_bynumber(fallback_type)
+        if mode_map and msg.custom_mode in mode_map:
+            return mode_map[msg.custom_mode]
+    return mode
+
+
 class MavlinkReader(threading.Thread):
     """Background thread that reads MAVLink and updates TelemetryState."""
 
@@ -170,7 +188,7 @@ class MavlinkReader(threading.Thread):
 
     def _handle_heartbeat(self, msg):
         if msg.get_srcSystem() == self._conn.target_system:
-            mode = mavutil.mode_string_v10(msg)
+            mode = _resolve_mode(msg)
             armed = (msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0
 
             def _up(s):
