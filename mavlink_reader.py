@@ -103,14 +103,30 @@ class MavlinkReader(threading.Thread):
             pass
         self._conn = None
 
+    # Types that should NOT be treated as the vehicle (GCS, radios, etc.).
+    _NON_VEHICLE_TYPES = frozenset((
+        mavutil.mavlink.MAV_TYPE_GCS,               # 6
+        mavutil.mavlink.MAV_TYPE_ANTENNA_TRACKER,    # 5  (optional, but not a vehicle)
+    ))
+
     # -- connection -----------------------------------------------------------
 
     def _connect(self, conn_str: str, heartbeat_timeout: float) -> None:
         self._close_conn()
         print(f"[mavlink_reader] connecting to {conn_str} (baud={self.baud})")
         self._conn = mavutil.mavlink_connection(conn_str, baud=self.baud)
-        print(f"[mavlink_reader] waiting for heartbeat (timeout {heartbeat_timeout}s)...")
-        self._conn.wait_heartbeat(timeout=heartbeat_timeout)
+        print(f"[mavlink_reader] waiting for vehicle heartbeat (timeout {heartbeat_timeout}s)...")
+        # Loop until we get a heartbeat from an actual vehicle, not a GCS or radio.
+        deadline = time.monotonic() + heartbeat_timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("no vehicle heartbeat received")
+            self._conn.wait_heartbeat(timeout=remaining)
+            hb_type = self._conn.messages.get("HEARTBEAT")
+            if hb_type is not None and hb_type.type not in self._NON_VEHICLE_TYPES:
+                break
+            print(f"[mavlink_reader] skipping non-vehicle heartbeat (type={hb_type.type if hb_type else '?'})")
         print(f"[mavlink_reader] heartbeat from system {self._conn.target_system} "
               f"component {self._conn.target_component}")
         self.state.update(lambda s: setattr(s, "connected", True))
