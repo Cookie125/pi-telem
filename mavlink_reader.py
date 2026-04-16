@@ -87,9 +87,9 @@ class MavlinkReader(threading.Thread):
                         time.sleep(0.2 if n > 1 else 2.0)
                         continue
                     if not os.access(conn, os.R_OK | os.W_OK):
-                        print(f"[mavlink_reader] {conn} not accessible yet, retrying in 5s...")
-                        time.sleep(5)
-                        continue
+                        print(f"[mavlink_reader] {conn} not accessible, restarting...")
+                        time.sleep(1)
+                        os._exit(1)
                 self._connect(conn, heartbeat_timeout=hb_timeout)
                 self._loop()
             except Exception as exc:
