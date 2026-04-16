@@ -50,11 +50,26 @@ Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/${USER}/.Xauthority
 Environment=XDG_RUNTIME_DIR=/run/user/${USER_UID}
 Environment=PYTHONUNBUFFERED=1
-# Boot race: wait for X11, then wait for serial device and set permissions.
-# Runs as root ('+' prefix) so chmod works. Combined into one command to
-# minimise the gap between chmod and ExecStart (avoids udev resetting perms).
-ExecStartPre=+/bin/bash -c 'for i in \$(seq 1 90); do [ -S /tmp/.X11-unix/X0 ] && [ -f /home/${USER}/.Xauthority ] && [ -d /run/user/${USER_UID} ] && break; sleep 1; done; for i in \$(seq 1 30); do [ -e /dev/serial0 ] && break; sleep 1; done; /bin/chmod 666 /dev/serial0 2>/dev/null; t=\$(/bin/readlink -f /dev/serial0 2>/dev/null) && /bin/chmod 666 "\$t" 2>/dev/null; exit 0'
-TimeoutStartSec=120
+# Boot race: wait for X11 ready, then wait for serial to be accessible.
+# Runs as root ('+' prefix). Loops chmod + verify as the service user
+# until permissions actually stick (handles udev re-triggering).
+ExecStartPre=+/bin/bash -c '\
+  for i in \$(seq 1 90); do \
+    [ -S /tmp/.X11-unix/X0 ] && [ -f /home/${USER}/.Xauthority ] && [ -d /run/user/${USER_UID} ] && break; \
+    sleep 1; \
+  done; \
+  for i in \$(seq 1 60); do \
+    if [ -e /dev/serial0 ]; then \
+      /bin/chmod 666 /dev/serial0 2>/dev/null; \
+      t=\$(/bin/readlink -f /dev/serial0 2>/dev/null) && /bin/chmod 666 "\$t" 2>/dev/null; \
+      if su -s /bin/sh ${USER} -c "test -r /dev/serial0 -a -w /dev/serial0" 2>/dev/null; then \
+        exit 0; \
+      fi; \
+    fi; \
+    sleep 1; \
+  done; \
+  exit 0'
+TimeoutStartSec=180
 ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py -c /dev/serial0 --baud 115200 --map --terrain
 Restart=always
 RestartSec=5

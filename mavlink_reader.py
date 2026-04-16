@@ -77,7 +77,6 @@ class MavlinkReader(threading.Thread):
     def run(self):
         n = len(self.connections)
         hb_timeout = 5.0 if n > 1 else 30.0
-        perm_retries = 0
         while not self._stop_event.is_set():
             conn = self.connections[self._conn_idx % n]
             try:
@@ -88,14 +87,9 @@ class MavlinkReader(threading.Thread):
                         time.sleep(0.2 if n > 1 else 2.0)
                         continue
                     if not os.access(conn, os.R_OK | os.W_OK):
-                        perm_retries += 1
-                        if perm_retries >= 6:  # ~30s of waiting
-                            print(f"[mavlink_reader] {conn} still not accessible after 30s, forcing restart...")
-                            os._exit(1)  # systemd Restart=always will relaunch with ExecStartPre chmod
-                        print(f"[mavlink_reader] {conn} not accessible yet (permission denied), retrying in 5s...")
+                        print(f"[mavlink_reader] {conn} not accessible yet, retrying in 5s...")
                         time.sleep(5)
                         continue
-                perm_retries = 0
                 self._connect(conn, heartbeat_timeout=hb_timeout)
                 self._loop()
             except Exception as exc:
