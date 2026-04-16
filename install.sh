@@ -54,11 +54,11 @@ Environment=PYTHONUNBUFFERED=1
 # Runs as root ('+' prefix). Loops chmod + verify as the service user
 # until permissions actually stick (handles udev re-triggering).
 ExecStartPre=+/bin/bash -c '\
-  for i in \$(seq 1 90); do \
+  for i in \$(seq 1 120); do \
     [ -S /tmp/.X11-unix/X0 ] && [ -f /home/${USER}/.Xauthority ] && [ -d /run/user/${USER_UID} ] && break; \
     sleep 1; \
   done; \
-  for i in \$(seq 1 60); do \
+  for i in \$(seq 1 120); do \
     if [ -e /dev/serial0 ]; then \
       /bin/chmod 666 /dev/serial0 2>/dev/null; \
       t=\$(/bin/readlink -f /dev/serial0 2>/dev/null) && /bin/chmod 666 "\$t" 2>/dev/null; \
@@ -69,7 +69,7 @@ ExecStartPre=+/bin/bash -c '\
     sleep 1; \
   done; \
   exit 0'
-TimeoutStartSec=180
+TimeoutStartSec=300
 ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/main.py -c /dev/serial0 --baud 115200 --map --terrain
 Restart=always
 RestartSec=5
